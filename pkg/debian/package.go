@@ -1,26 +1,145 @@
 package debian
 
-// Package représente un paquet Debian.
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+)
+
 type Package struct {
-    Name        string // Nom du paquet
-    Version     string // Version du paquet
-    Architecture string // Architecture du paquet
-    Maintainer  string // Responsable du paquet
-    Description string // Description du paquet
+	Name         string
+	Version      string
+	Architecture string
+	Maintainer   string
+	Description  string
+	DownloadURL  string
+	Filename     string
+	Size         int64
 }
 
-// NewPackage crée une nouvelle instance de Package.
-func NewPackage(name, version, architecture, maintainer, description string) *Package {
-    return &Package{
-        Name:        name,
-        Version:     version,
-        Architecture: architecture,
-        Maintainer:  maintainer,
-        Description: description,
-    }
+func NewPackage(name, version, architecture, maintainer, description, downloadURL, filename string, size int64) *Package {
+	return &Package{
+		Name:         name,
+		Version:      version,
+		Architecture: architecture,
+		Maintainer:   maintainer,
+		Description:  description,
+		DownloadURL:  downloadURL,
+		Filename:     filename,
+		Size:         size,
+	}
 }
 
-// String retourne une représentation sous forme de chaîne du paquet.
 func (p *Package) String() string {
-    return p.Name + " (" + p.Version + ") - " + p.Description
+	return p.Name + " (" + p.Version + ") - " + p.Description
+}
+
+func (p *Package) Download(destDir string) error {
+	if p.DownloadURL == "" {
+		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
+	}
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire de destination: %v", err)
+	}
+
+	filename := p.Filename
+	if filename == "" {
+		filename = fmt.Sprintf("%s_%s_%s.deb", p.Name, p.Version, p.Architecture)
+	}
+
+	destPath := filepath.Join(destDir, filename)
+
+	resp, err := http.Get(p.DownloadURL)
+	if err != nil {
+		return fmt.Errorf("erreur lors du téléchargement: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("échec du téléchargement: statut HTTP %d", resp.StatusCode)
+	}
+
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("impossible de créer le fichier de destination: %v", err)
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, resp.Body)
+	if err != nil {
+		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
+	}
+
+	fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", p.Name, destPath)
+	return nil
+}
+
+func (p *Package) DownloadToFile(filePath string) error {
+	if p.DownloadURL == "" {
+		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
+	}
+
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire parent: %v", err)
+	}
+
+	resp, err := http.Get(p.DownloadURL)
+	if err != nil {
+		return fmt.Errorf("erreur lors du téléchargement: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("échec du téléchargement: statut HTTP %d", resp.StatusCode)
+	}
+
+	destFile, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("impossible de créer le fichier de destination: %v", err)
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, resp.Body)
+	if err != nil {
+		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
+	}
+
+	fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", p.Name, filePath)
+	return nil
+}
+
+func (p *Package) GetDownloadInfo() (*DownloadInfo, error) {
+	if p.DownloadURL == "" {
+		return nil, fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
+	}
+
+	resp, err := http.Head(p.DownloadURL)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la vérification de l'URL: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("URL non accessible: statut HTTP %d", resp.StatusCode)
+	}
+
+	info := &DownloadInfo{
+		URL:           p.DownloadURL,
+		ContentLength: resp.ContentLength,
+		ContentType:   resp.Header.Get("Content-Type"),
+		LastModified:  resp.Header.Get("Last-Modified"),
+	}
+
+	return info, nil
+}
+
+type DownloadInfo struct {
+	URL           string
+	ContentLength int64
+	ContentType   string
+	LastModified  string
 }

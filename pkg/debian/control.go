@@ -2,12 +2,10 @@ package debian
 
 import (
 	"errors"
-	"io/ioutil"
 	"os"
 	"strings"
 )
 
-// Control represents the control file for a Debian package.
 type Control struct {
 	// Required fields
 	Package      string
@@ -52,7 +50,6 @@ type Control struct {
 	CustomFields map[string]string
 }
 
-// ReadControl reads a Debian control file and returns a Control struct.
 func ReadControl(filePath string) (*Control, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -62,13 +59,11 @@ func ReadControl(filePath string) (*Control, error) {
 	return parseControl(string(data))
 }
 
-// WriteControl writes a Control struct to a Debian control file.
 func WriteControl(filePath string, control *Control) error {
 	content := formatControl(control)
-	return ioutil.WriteFile(filePath, []byte(content), os.ModePerm)
+	return os.WriteFile(filePath, []byte(content), os.ModePerm)
 }
 
-// parseControl parses the content of a control file into a Control struct.
 func parseControl(content string) (*Control, error) {
 	lines := strings.Split(content, "\n")
 	control := &Control{
@@ -152,7 +147,6 @@ func parseControl(content string) (*Control, error) {
 	return control, nil
 }
 
-// parsePackageList parses a comma-separated list of packages and returns a slice.
 func parsePackageList(value string) []string {
 	if value == "" {
 		return nil
