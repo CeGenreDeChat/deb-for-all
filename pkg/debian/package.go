@@ -36,7 +36,18 @@ func (p *Package) String() string {
 	return p.Name + " (" + p.Version + ") - " + p.Description
 }
 
+// Download télécharge le paquet Debian vers le répertoire spécifié avec affichage de confirmation.
 func (p *Package) Download(destDir string) error {
+	return p.downloadToDir(destDir, true)
+}
+
+// DownloadSilent télécharge le paquet Debian vers le répertoire spécifié sans affichage console.
+func (p *Package) DownloadSilent(destDir string) error {
+	return p.downloadToDir(destDir, false)
+}
+
+// downloadToDir est la fonction interne commune pour le téléchargement vers un répertoire.
+func (p *Package) downloadToDir(destDir string, verbose bool) error {
 	if p.DownloadURL == "" {
 		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
 	}
@@ -73,11 +84,24 @@ func (p *Package) Download(destDir string) error {
 		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
 	}
 
-	fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", p.Name, destPath)
+	if verbose {
+		fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", p.Name, destPath)
+	}
 	return nil
 }
 
+// DownloadToFile télécharge le paquet Debian vers le fichier spécifié avec affichage de confirmation.
 func (p *Package) DownloadToFile(filePath string) error {
+	return p.downloadToFile(filePath, true)
+}
+
+// DownloadToFileSilent télécharge le paquet Debian vers le fichier spécifié sans affichage console.
+func (p *Package) DownloadToFileSilent(filePath string) error {
+	return p.downloadToFile(filePath, false)
+}
+
+// downloadToFile est la fonction interne commune pour le téléchargement vers un fichier spécifique.
+func (p *Package) downloadToFile(filePath string, verbose bool) error {
 	if p.DownloadURL == "" {
 		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
 	}
@@ -108,7 +132,9 @@ func (p *Package) DownloadToFile(filePath string) error {
 		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
 	}
 
-	fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", p.Name, filePath)
+	if verbose {
+		fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", p.Name, filePath)
+	}
 	return nil
 }
 

@@ -120,6 +120,81 @@ func (d *Downloader) DownloadWithProgress(pkg *Package, destPath string, progres
 	return nil
 }
 
+// DownloadSilent télécharge un paquet sans affichage de progression ni messages console.
+// Cette fonction est idéale pour une intégration dans du code Go sans pollution de la sortie.
+func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error {
+	if pkg.DownloadURL == "" {
+		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", pkg.Name)
+	}
+
+	// Créer le répertoire parent s'il n'existe pas
+	dir := filepath.Dir(destPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire parent: %v", err)
+	}
+
+	// Configurer le client HTTP
+	client := &http.Client{
+		Timeout: d.Timeout,
+	}
+
+	var resp *http.Response
+	var lastErr error
+
+	// Tentatives de téléchargement avec retry (sans affichage)
+	for attempt := 1; attempt <= d.RetryAttempts; attempt++ {
+		req, err := http.NewRequest("GET", pkg.DownloadURL, nil)
+		if err != nil {
+			return fmt.Errorf("erreur lors de la création de la requête: %v", err)
+		}
+
+		req.Header.Set("User-Agent", d.UserAgent)
+
+		resp, err = client.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			break
+		}
+
+		// Stocker la dernière erreur sans affichage
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("statut HTTP %d", resp.StatusCode)
+		}
+
+		if resp != nil {
+			resp.Body.Close()
+			resp = nil
+		}
+
+		// Attendre avant la prochaine tentative (sans message)
+		if attempt < d.RetryAttempts {
+			time.Sleep(2 * time.Second)
+		}
+	}
+
+	if resp == nil || resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("erreur lors du téléchargement après %d tentatives: %v", d.RetryAttempts, lastErr)
+	}
+	defer resp.Body.Close()
+
+	// Créer le fichier de destination
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("impossible de créer le fichier de destination: %v", err)
+	}
+	defer destFile.Close()
+
+	// Copier le contenu sans callback de progression
+	_, err = io.Copy(destFile, resp.Body)
+	if err != nil {
+		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
+	}
+
+	// Retourner sans message de succès
+	return nil
+}
+
 func (d *Downloader) DownloadWithChecksum(pkg *Package, destPath, checksum, checksumType string) error {
 	err := d.DownloadWithProgress(pkg, destPath, nil)
 	if err != nil {

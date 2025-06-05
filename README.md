@@ -38,6 +38,7 @@ package main
 
 import (
     "fmt"
+    "log"
     "github.com/CeGenreDeChat/deb-for-all/pkg/debian"
 )
 
@@ -55,6 +56,13 @@ func main() {
     err := pkg.Download("./downloads")
     if err != nil {
         fmt.Printf("Download failed: %v\n", err)
+    }
+
+    // Silent download (no console output)
+    err = pkg.DownloadSilent("./downloads")
+    if err != nil {
+        // Handle error quietly
+        log.Printf("Silent download failed: %v", err)
     }
 }
 ```
@@ -79,6 +87,20 @@ progressCallback := func(downloaded, total int64) {
 err := downloader.DownloadWithProgress(pkg, "./downloads/package.deb", progressCallback)
 if err != nil {
     fmt.Printf("Download failed: %v\n", err)
+}
+```
+
+### Silent Download for Clean Integration
+
+```go
+// Perfect for integration into applications without console pollution
+func downloadQuietly(packageURL, destDir string) error {
+    pkg := &debian.Package{
+        Name:        "my-package",
+        DownloadURL: packageURL,
+    }
+
+    return pkg.DownloadSilent(destDir)
 }
 ```
 

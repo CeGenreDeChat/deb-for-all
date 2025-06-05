@@ -118,6 +118,20 @@ func (p *Package) GetDownloadInfo() (*DownloadInfo, error)
 ```
 Retrieves download information without downloading the file.
 
+#### DownloadSilent
+
+```go
+func (p *Package) DownloadSilent(destDir string) error
+```
+Downloads the package silently to the specified directory without any console output. Perfect for integration into Go applications without output pollution.
+
+#### DownloadToFileSilent
+
+```go
+func (p *Package) DownloadToFileSilent(filePath string) error
+```
+Downloads the package silently to a specific file path without any console output.
+
 ### Repository Methods
 
 #### DownloadPackage
@@ -177,6 +191,13 @@ Downloads multiple packages concurrently.
 func (d *Downloader) GetFileSize(url string) (int64, error)
 ```
 Gets the file size from a URL without downloading.
+
+#### DownloadSilent
+
+```go
+func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error
+```
+Downloads a package silently without any console output or progress reporting. Ideal for integration into Go code without polluting the output.
 
 ## Error Handling
 
@@ -257,6 +278,61 @@ downloader := debian.NewDownloader()
 errors := downloader.DownloadMultiple(packages, "./downloads", 5)
 for _, err := range errors {
     fmt.Printf("Error: %v\n", err)
+}
+```
+
+### Silent Download for Integration
+
+```go
+package main
+
+import (
+    "log"
+    "github.com/CeGenreDeChat/deb-for-all/pkg/debian"
+)
+
+func downloadPackageQuietly(name, url, destDir string) error {
+    pkg := &debian.Package{
+        Name:        name,
+        DownloadURL: url,
+    }
+
+    // Silent download without any console output
+    return pkg.DownloadSilent(destDir)
+}
+
+func main() {
+    // Perfect for integration into business logic
+    err := downloadPackageQuietly("hello",
+        "http://deb.debian.org/debian/pool/main/h/hello/hello_2.10-2_amd64.deb",
+        "./downloads")
+    if err != nil {
+        log.Printf("Failed to download package: %v", err)
+        return
+    }
+
+    // Continue with your business logic...
+    log.Println("Package downloaded successfully")
+}
+```
+
+### Silent Download with Downloader
+
+```go
+downloader := debian.NewDownloader()
+downloader.RetryAttempts = 3
+downloader.VerifyChecksums = false
+
+pkg := &debian.Package{
+    Name:        "example",
+    DownloadURL: "https://example.com/package.deb",
+}
+
+// Silent download with retry logic but no console output
+err := downloader.DownloadSilent(pkg, "./downloads/package.deb")
+if err != nil {
+    // Handle error silently or log it
+    log.Printf("Download failed: %v", err)
 }
 ```
 

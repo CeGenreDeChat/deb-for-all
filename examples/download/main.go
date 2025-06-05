@@ -59,6 +59,24 @@ func main() {
 	} else {
 		fmt.Printf("Paquet hello disponible: %t\n", available)
 	}
+
+	fmt.Println("\n4. Test de téléchargement silencieux")
+	fmt.Printf("Téléchargement silencieux de %s...", testPkg.Name)
+	err = downloader.DownloadSilent(testPkg, fmt.Sprintf("%s/hello_silent.deb", downloadDir))
+	if err != nil {
+		fmt.Printf(" ❌ Erreur: %v\n", err)
+	} else {
+		fmt.Printf(" ✅ Succès (sans affichage de progression)\n")
+	}
+
+	fmt.Printf("Test méthode Package.DownloadSilent()...")
+	err = testPkg.DownloadSilent(downloadDir)
+	if err != nil {
+		fmt.Printf(" ❌ Erreur: %v\n", err)
+	} else {
+		fmt.Printf(" ✅ Succès\n")
+	}
+
 	fmt.Println("\n=== Exemple terminé ===")
 	fmt.Printf("Vérifiez le répertoire %s pour les fichiers téléchargés.\n", downloadDir)
 }
