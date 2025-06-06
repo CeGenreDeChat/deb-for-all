@@ -91,8 +91,32 @@ func (r *Repository) FetchPackages() ([]string, error) {
 	return result, nil
 }
 
-func (r *Repository) SearchPackage(packageName string) (string, error) {
-	return "", nil
+func (r *Repository) SearchPackage(packageName string) ([]string, error) {
+	allPackages, err := r.FetchPackages()
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la récupération des paquets: %v", err)
+	}
+
+	var matches []string
+	packageNameLower := strings.ToLower(packageName)
+
+	for _, pkg := range allPackages {
+		pkgLower := strings.ToLower(pkg)
+
+		if pkg == packageName {
+			matches = append([]string{pkg}, matches...)
+		} else if pkgLower == packageNameLower {
+			matches = append([]string{pkg}, matches...)
+		} else if strings.Contains(pkgLower, packageNameLower) {
+			matches = append(matches, pkg) // partal match
+		}
+	}
+
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("aucun paquet trouvé pour '%s' dans la distribution %s", packageName, r.Distribution)
+	}
+
+	return matches, nil
 }
 
 func (r *Repository) DownloadPackage(packageName, version, architecture, destDir string) error {
@@ -226,11 +250,6 @@ func (r *Repository) SearchPackageInSources(packageName, version, architecture s
 	}
 
 	return nil, fmt.Errorf("paquet %s_%s_%s non trouvé", packageName, version, architecture)
-}
-
-func (r *Repository) buildPackagesURL(section, architecture string) string {
-	baseURL := strings.TrimSuffix(r.URL, "/")
-	return fmt.Sprintf("%s/dists/stable/%s/binary-%s/Packages", baseURL, section, architecture)
 }
 
 func (r *Repository) buildPackagesURLWithDist(distribution, section, architecture string) string {

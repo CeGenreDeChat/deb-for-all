@@ -13,9 +13,9 @@ func main() {
 		"debian-main",
 		"http://deb.debian.org/debian",
 		"Dépôt principal Debian",
-		"bookworm",        // Distribution
-		[]string{"main"},  // UNE SEULE section pour le test
-		[]string{"amd64"}, // Architectures
+		"bookworm",
+		[]string{"main"},
+		[]string{"amd64"},
 	)
 
 	fmt.Printf("Récupération des paquets depuis: %s\n", repo.URL)
@@ -65,14 +65,13 @@ func main() {
 
 	fmt.Println("\n=== Test avec configuration personnalisée ===")
 
-	// Créer un repository avec configuration personnalisée
 	customRepo := debian.NewRepository(
 		"debian-bullseye-arm64",
 		"http://deb.debian.org/debian",
 		"Dépôt Debian Bullseye pour ARM64",
-		"bullseye",        // Distribution spécifique
-		[]string{"main"},  // Seulement la section main
-		[]string{"arm64"}, // Architecture ARM64
+		"bullseye",
+		[]string{"main"},
+		[]string{"arm64"},
 	)
 
 	fmt.Printf("Configuration personnalisée:\n")
@@ -90,32 +89,66 @@ func main() {
 
 	fmt.Println("\n=== Test de modification dynamique ===")
 
-	// Créer un repository simple avec configuration initiale
 	dynamicRepo := debian.NewRepository(
 		"debian-dynamic",
 		"http://deb.debian.org/debian",
 		"Dépôt Debian avec configuration dynamique",
-		"bookworm",                              // Distribution initiale
-		[]string{"main", "contrib", "non-free"}, // Sections initiales
-		[]string{"amd64"},                       // Architecture initiale
+		"bookworm",
+		[]string{"main", "contrib", "non-free"},
+		[]string{"amd64"},
 	)
 
 	fmt.Printf("Configuration initiale: %s, %v, %v\n",
 		dynamicRepo.Distribution, dynamicRepo.Sections, dynamicRepo.Architectures)
 
-	// Modifier la configuration
 	dynamicRepo.SetDistribution("bullseye")
 	dynamicRepo.SetSections([]string{"main"})
 	dynamicRepo.AddArchitecture("i386")
 
 	fmt.Printf("Configuration modifiée: %s, %v, %v\n",
 		dynamicRepo.Distribution, dynamicRepo.Sections, dynamicRepo.Architectures)
-
 	fmt.Println("Test de récupération avec configuration dynamique modifiée...")
 	dynamicPackages, err := dynamicRepo.FetchPackages()
 	if err != nil {
 		fmt.Printf("✗ Erreur avec configuration dynamique: %v\n", err)
 	} else {
 		fmt.Printf("✓ %d paquets trouvés avec configuration dynamique\n", len(dynamicPackages))
+	}
+
+	fmt.Println("\n=== Test de la fonction SearchPackage ===")
+
+	searchTerms := []string{"vim", "nano", "curl", "git", "nginx", "apache2"}
+
+	for _, term := range searchTerms {
+		fmt.Printf("🔍 Recherche de '%s'...\n", term)
+
+		matches, err := repo.SearchPackage(term)
+		if err != nil {
+			fmt.Printf("❌ Erreur lors de la recherche de '%s': %v\n", term, err)
+			continue
+		}
+
+		fmt.Printf("✅ Trouvé %d paquet(s) correspondant(s):\n", len(matches))
+
+		maxDisplay := 5
+		if len(matches) > maxDisplay {
+			for i, pkg := range matches[:maxDisplay] {
+				fmt.Printf("  %d. %s\n", i+1, pkg)
+			}
+			fmt.Printf("  ... et %d autres\n", len(matches)-maxDisplay)
+		} else {
+			for i, pkg := range matches {
+				fmt.Printf("  %d. %s\n", i+1, pkg)
+			}
+		}
+		fmt.Println()
+	}
+
+	fmt.Println("🔍 Test avec un paquet inexistant...")
+	_, err = repo.SearchPackage("paquet-inexistant-xyz123")
+	if err != nil {
+		fmt.Printf("✅ Comportement attendu: %v\n", err)
+	} else {
+		fmt.Println("❌ Erreur: le paquet inexistant a été trouvé!")
 	}
 }
