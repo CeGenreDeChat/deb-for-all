@@ -8,14 +8,13 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Test de la fonction FetchPackages avec décompression ===")
-
+	fmt.Println("=== Test de la fonction FetchPackages - Collecte TOUS les paquets ===")
 	repo := debian.NewRepository(
 		"debian-main",
 		"http://deb.debian.org/debian",
 		"Dépôt principal Debian",
 		"bookworm",                              // Distribution
-		[]string{"main", "contrib", "non-free"}, // Sections
+		[]string{"main"},                        // UNE SEULE section pour le test
 		[]string{"amd64"},                       // Architectures
 	)
 
@@ -23,7 +22,8 @@ func main() {
 	fmt.Printf("Distribution: %s\n", repo.Distribution)
 	fmt.Printf("Sections: %v\n", repo.Sections)
 	fmt.Printf("Architectures: %v\n", repo.Architectures)
-	fmt.Println("La fonction essaiera les formats: non-compressé, .gz, .xz")
+	fmt.Println("⚠️ ATTENTION: Cette fonction va maintenant télécharger TOUS les fichiers Packages")
+	fmt.Println("de toutes les sections et architectures (peut prendre plusieurs minutes)...")
 	fmt.Println("Ceci peut prendre quelques secondes pour télécharger et décompresser...")
 
 	packages, err := repo.FetchPackages()
@@ -31,7 +31,7 @@ func main() {
 		log.Fatalf("Erreur lors de la récupération des paquets: %v", err)
 	}
 
-	fmt.Printf("✓ %d paquets trouvés (décompression réussie!)\n\n", len(packages))
+	fmt.Printf("✓ %d paquets UNIQUES trouvés depuis TOUTES les sections!\n\n", len(packages))
 
 	fmt.Println("Premiers 20 paquets:")
 	for i, pkg := range packages {

@@ -32,13 +32,11 @@ func NewRepository(name, url, description, distribution string, sections, archit
 }
 
 func (r *Repository) FetchPackages() ([]string, error) {
-	// Utiliser les distributions de fallback si la distribution principale échoue
 	distributions := []string{r.Distribution, "bookworm", "bullseye", "buster"}
 	sections := r.Sections
 	architectures := r.Architectures
 	extensions := []string{"", ".gz", ".xz"}
 
-	// Dédupliquer les distributions
 	seen := make(map[string]bool)
 	uniqueDistributions := make([]string, 0)
 	for _, dist := range distributions {
@@ -48,7 +46,9 @@ func (r *Repository) FetchPackages() ([]string, error) {
 		}
 	}
 
+	allPackages := make(map[string]bool)
 	var lastErr error
+	foundAtLeastOne := false
 
 	for _, dist := range uniqueDistributions {
 		for _, section := range sections {
@@ -68,17 +68,40 @@ func (r *Repository) FetchPackages() ([]string, error) {
 						continue
 					}
 
+					var packages []string
 					if ext == "" {
-						return r.downloadAndParsePackages(packagesURL)
+						packages, err = r.downloadAndParsePackages(packagesURL)
 					} else {
-						return r.downloadAndParseCompressedPackages(packagesURL, ext)
+						packages, err = r.downloadAndParseCompressedPackages(packagesURL, ext)
 					}
+
+					if err != nil {
+						lastErr = err
+						continue
+					}
+
+					for _, pkg := range packages {
+						allPackages[pkg] = true
+					}
+					foundAtLeastOne = true
+
+					break
 				}
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("impossible de récupérer les paquets depuis toutes les distributions testées: %v", lastErr)
+	if !foundAtLeastOne {
+		return nil, fmt.Errorf("impossible de récupérer les paquets depuis toutes les distributions testées: %v", lastErr)
+	}
+
+	// Convertir la map en slice
+	result := make([]string, 0, len(allPackages))
+	for pkg := range allPackages {
+		result = append(result, pkg)
+	}
+
+	return result, nil
 }
 
 func (r *Repository) SearchPackage(packageName string) (string, error) {
