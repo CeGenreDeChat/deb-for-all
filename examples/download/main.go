@@ -18,7 +18,7 @@ func main() {
 
 	fmt.Println("\n1. Téléchargement avec downloader avancé")
 	downloader := debian.NewDownloader()
-	downloader.RetryAttempts = 2 // Réduire pour les tests
+	downloader.RetryAttempts = 2
 
 	testPkg := &debian.Package{
 		Name:         "hello",
@@ -50,7 +50,7 @@ func main() {
 		fmt.Printf("Taille du fichier: %d bytes\n", size)
 	}
 
-	fmt.Println("\n3. Utilisation d'un dépôt Debian")
+	fmt.Println("\n4. Utilisation d'un dépôt Debian")
 	repo := debian.NewRepository("debian-official", "http://deb.debian.org/debian", "Dépôt officiel Debian")
 
 	available, availErr := repo.CheckPackageAvailability("hello", "2.10-2", "amd64")
@@ -60,7 +60,7 @@ func main() {
 		fmt.Printf("Paquet hello disponible: %t\n", available)
 	}
 
-	fmt.Println("\n4. Test de téléchargement silencieux")
+	fmt.Println("\n5. Test de téléchargement silencieux")
 	fmt.Printf("Téléchargement silencieux de %s...", testPkg.Name)
 	err = downloader.DownloadSilent(testPkg, fmt.Sprintf("%s/hello_silent.deb", downloadDir))
 	if err != nil {
@@ -77,6 +77,107 @@ func main() {
 		fmt.Printf(" ✅ Succès\n")
 	}
 
-	fmt.Println("\n=== Exemple terminé ===")
-	fmt.Printf("Vérifiez le répertoire %s pour les fichiers téléchargés.\n", downloadDir)
+	fmt.Println("\n3. Téléchargement de paquets sources")
+
+	fmt.Println("\n=== 3.1 Paquet source hello ===")
+	helloSource := debian.NewSourcePackage(
+		"hello",
+		"2.10-2",
+		"Santiago Vila <sanvila@debian.org>",
+		"example package based on GNU hello",
+		"pool/main/h/hello",
+	)
+
+	helloSource.AddFile(
+		"hello_2.10-2.dsc",
+		"http://deb.debian.org/debian/pool/main/h/hello/hello_2.10-2.dsc",
+		1335,
+		"",
+		"",
+		"dsc",
+	)
+
+	helloSource.AddFile(
+		"hello_2.10.orig.tar.gz",
+		"http://deb.debian.org/debian/pool/main/h/hello/hello_2.10.orig.tar.gz",
+		725946,
+		"",
+		"",
+		"orig",
+	)
+
+	helloSource.AddFile(
+		"hello_2.10-2.debian.tar.xz",
+		"http://deb.debian.org/debian/pool/main/h/hello/hello_2.10-2.debian.tar.xz",
+		6132,
+		"",
+		"",
+		"debian",
+	)
+
+	sourceDestDir := fmt.Sprintf("%s/hello-source", downloadDir)
+	fmt.Printf("Téléchargement du paquet source %s...\n", helloSource.String())
+
+	err = downloader.DownloadSourcePackageWithProgress(helloSource, sourceDestDir, func(filename string, downloaded, total int64) {
+		if total > 0 {
+			progress := float64(downloaded) / float64(total) * 100
+			fmt.Printf("\r%s: %.1f%% (%d/%d bytes)", filename, progress, downloaded, total)
+		}
+	})
+
+	if err != nil {
+		fmt.Printf("\nErreur lors du téléchargement: %v\n", err)
+	} else {
+		fmt.Println("\n✓ Téléchargement du paquet source hello terminé")
+	}
+
+	fmt.Println("\n=== 3.2 Téléchargement du tarball original uniquement ===")
+	origDestDir := fmt.Sprintf("%s/hello-orig-only", downloadDir)
+	fmt.Printf("Téléchargement du tarball original vers %s...\n", origDestDir)
+
+	err = downloader.DownloadOrigTarball(helloSource, origDestDir)
+	if err != nil {
+		fmt.Printf("Erreur lors du téléchargement du tarball original: %v\n", err)
+	} else {
+		fmt.Println("✓ Téléchargement du tarball original terminé")
+	}
+
+	fmt.Println("\n=== 3.3 Téléchargement silencieux ===")
+	silentDestDir := fmt.Sprintf("%s/hello-silent", downloadDir)
+	fmt.Print("Téléchargement silencieux...")
+
+	err = downloader.DownloadSourcePackageSilent(helloSource, silentDestDir)
+	if err != nil {
+		fmt.Printf(" ❌ Erreur: %v\n", err)
+	} else {
+		fmt.Println(" ✓ Téléchargement silencieux terminé")
+	}
+
+	fmt.Println("\n=== 3.4 Informations sur le paquet source ===")
+	fmt.Printf("Nom: %s\n", helloSource.Name)
+	fmt.Printf("Version: %s\n", helloSource.Version)
+	fmt.Printf("Maintainer: %s\n", helloSource.Maintainer)
+	fmt.Printf("Description: %s\n", helloSource.Description)
+	fmt.Printf("Nombre de fichiers: %d\n", len(helloSource.Files))
+
+	fmt.Println("\nFichiers du paquet source:")
+	for _, file := range helloSource.Files {
+		fmt.Printf("  - %s (%s, %d bytes)\n", file.Name, file.Type, file.Size)
+	}
+
+	if origFile := helloSource.GetOrigTarball(); origFile != nil {
+		fmt.Printf("\nTarball original: %s\n", origFile.Name)
+	}
+
+	if debianFile := helloSource.GetDebianTarball(); debianFile != nil {
+		fmt.Printf("Tarball Debian: %s\n", debianFile.Name)
+	}
+
+	if dscFile := helloSource.GetDSCFile(); dscFile != nil {
+		fmt.Printf("Fichier DSC: %s\n", dscFile.Name)
+	}
+
+	fmt.Println("\n=== Résumé des téléchargements ===")
+	fmt.Printf("Répertoire de téléchargement: %s\n", downloadDir)
+	fmt.Println("Vérifiez le contenu du répertoire pour voir les fichiers téléchargés.")
 }

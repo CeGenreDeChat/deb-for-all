@@ -3,11 +3,10 @@ package main
 import (
 	"fmt"
 
-	"github.com/CeGenreDeChat/deb-for-all/pkg/debian" // Adjust the import path as necessary
+	"github.com/CeGenreDeChat/deb-for-all/pkg/debian"
 )
 
 func main() {
-	// Example of creating a Debian package with download capabilities
 	pkg := debian.Package{
 		Name:         "example-package",
 		Version:      "1.0.0",
@@ -19,7 +18,6 @@ func main() {
 		Size:         1024000, // 1MB
 	}
 
-	// Print package details
 	fmt.Printf("Package Name: %s\n", pkg.Name)
 	fmt.Printf("Version: %s\n", pkg.Version)
 	fmt.Printf("Architecture: %s\n", pkg.Architecture)
@@ -28,13 +26,10 @@ func main() {
 	fmt.Printf("Download URL: %s\n", pkg.DownloadURL)
 	fmt.Printf("Size: %d bytes\n", pkg.Size)
 
-	// Example of downloading a package
 	fmt.Println("\n=== Exemple de téléchargement ===")
 
-	// Create a downloader
 	downloader := debian.NewDownloader()
 
-	// Download with progress callback
 	progressCallback := func(downloaded, total int64) {
 		if total > 0 {
 			percentage := float64(downloaded) / float64(total) * 100
@@ -48,13 +43,11 @@ func main() {
 		fmt.Printf("\nErreur de téléchargement (attendue avec URL fictive): %v\n", err)
 	}
 
-	// Example with repository
 	fmt.Println("\n=== Exemple avec dépôt ===")
 
 	repo := debian.NewRepository("debian-main", "http://deb.debian.org/debian", "Dépôt principal Debian")
 	fmt.Printf("Repository: %s (%s)\n", repo.Name, repo.URL)
 
-	// Check if a package is available (this will also fail with fake URLs)
 	available, err := repo.CheckPackageAvailability("curl", "7.68.0-1", "amd64")
 	if err != nil {
 		fmt.Printf("Erreur lors de la vérification de disponibilité: %v\n", err)
@@ -62,7 +55,6 @@ func main() {
 		fmt.Printf("Package curl disponible: %v\n", available)
 	}
 
-	// Example of getting download info
 	fmt.Println("\n=== Informations de téléchargement ===")
 	info, err := pkg.GetDownloadInfo()
 	if err != nil {

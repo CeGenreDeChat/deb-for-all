@@ -30,3 +30,4 @@ This phrase, or the phrase "NOT RECOMMENDED" mean that there may exist valid rea
 
 # Project Goal
 The aim of this project is to create a library for managing Debian packages within another Go project, and also to provide a binary for doing the same thing.
+Do not create unitary tests.

@@ -159,7 +159,6 @@ func parsePackageList(value string) []string {
 	return packages
 }
 
-// formatControl formats a Control struct into a string representation for a control file.
 func formatControl(control *Control) string {
 	var sb strings.Builder
 
