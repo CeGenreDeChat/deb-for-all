@@ -12,48 +12,67 @@ import (
 )
 
 type Repository struct {
-	Name        string
-	URL         string
-	Description string
+	Name          string
+	URL           string
+	Description   string
+	Distribution  string
+	Sections      []string
+	Architectures []string
 }
 
-func NewRepository(name, url, description string) *Repository {
+func NewRepository(name, url, description, distribution string, sections, architectures []string) *Repository {
 	return &Repository{
-		Name:        name,
-		URL:         url,
-		Description: description,
+		Name:          name,
+		URL:           url,
+		Description:   description,
+		Distribution:  distribution,
+		Sections:      sections,
+		Architectures: architectures,
 	}
 }
 
 func (r *Repository) FetchPackages() ([]string, error) {
-	distributions := []string{"bookworm", "bullseye", "buster"}
-	sections := []string{"main", "contrib", "non-free"}
-	architecture := "amd64"
+	// Utiliser les distributions de fallback si la distribution principale échoue
+	distributions := []string{r.Distribution, "bookworm", "bullseye", "buster"}
+	sections := r.Sections
+	architectures := r.Architectures
 	extensions := []string{"", ".gz", ".xz"}
+
+	// Dédupliquer les distributions
+	seen := make(map[string]bool)
+	uniqueDistributions := make([]string, 0)
+	for _, dist := range distributions {
+		if !seen[dist] {
+			seen[dist] = true
+			uniqueDistributions = append(uniqueDistributions, dist)
+		}
+	}
 
 	var lastErr error
 
-	for _, dist := range distributions {
+	for _, dist := range uniqueDistributions {
 		for _, section := range sections {
-			for _, ext := range extensions {
-				packagesURL := r.buildPackagesURLWithDist(dist, section, architecture) + ext
+			for _, arch := range architectures {
+				for _, ext := range extensions {
+					packagesURL := r.buildPackagesURLWithDist(dist, section, arch) + ext
 
-				resp, err := http.Head(packagesURL)
-				if err != nil {
-					lastErr = err
-					continue
-				}
-				resp.Body.Close()
+					resp, err := http.Head(packagesURL)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+					resp.Body.Close()
 
-				if resp.StatusCode != http.StatusOK {
-					lastErr = fmt.Errorf("impossible de récupérer le fichier Packages depuis %s (HTTP %d)", packagesURL, resp.StatusCode)
-					continue
-				}
+					if resp.StatusCode != http.StatusOK {
+						lastErr = fmt.Errorf("impossible de récupérer le fichier Packages depuis %s (HTTP %d)", packagesURL, resp.StatusCode)
+						continue
+					}
 
-				if ext == "" {
-					return r.downloadAndParsePackages(packagesURL)
-				} else {
-					return r.downloadAndParseCompressedPackages(packagesURL, ext)
+					if ext == "" {
+						return r.downloadAndParsePackages(packagesURL)
+					} else {
+						return r.downloadAndParseCompressedPackages(packagesURL, ext)
+					}
 				}
 			}
 		}
@@ -299,6 +318,31 @@ func (r *Repository) downloadAndParseCompressedPackages(packagesURL string, exte
 	}
 
 	return packages, nil
+}
+
+// SetDistribution définit la distribution à utiliser
+func (r *Repository) SetDistribution(distribution string) {
+	r.Distribution = distribution
+}
+
+// SetSections définit les sections à utiliser
+func (r *Repository) SetSections(sections []string) {
+	r.Sections = sections
+}
+
+// SetArchitectures définit les architectures à utiliser
+func (r *Repository) SetArchitectures(architectures []string) {
+	r.Architectures = architectures
+}
+
+// AddSection ajoute une section à la liste existante
+func (r *Repository) AddSection(section string) {
+	r.Sections = append(r.Sections, section)
+}
+
+// AddArchitecture ajoute une architecture à la liste existante
+func (r *Repository) AddArchitecture(architecture string) {
+	r.Architectures = append(r.Architectures, architecture)
 }
 
 type PackageInfo struct {

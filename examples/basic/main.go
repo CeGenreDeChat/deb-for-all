@@ -45,7 +45,14 @@ func main() {
 
 	fmt.Println("\n=== Exemple avec dépôt ===")
 
-	repo := debian.NewRepository("debian-main", "http://deb.debian.org/debian", "Dépôt principal Debian")
+	repo := debian.NewRepository(
+		"debian-main",
+		"http://deb.debian.org/debian",
+		"Dépôt principal Debian",
+		"bookworm",                              // Distribution
+		[]string{"main", "contrib", "non-free"}, // Sections
+		[]string{"amd64"},                       // Architectures
+	)
 	fmt.Printf("Repository: %s (%s)\n", repo.Name, repo.URL)
 
 	available, err := repo.CheckPackageAvailability("curl", "7.68.0-1", "amd64")

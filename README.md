@@ -108,7 +108,14 @@ func downloadQuietly(packageURL, destDir string) error {
 
 ```go
 // Create a repository
-repo := debian.NewRepository("debian-main", "http://deb.debian.org/debian", "Main Debian Repository")
+repo := debian.NewRepository(
+    "debian-main",
+    "http://deb.debian.org/debian",
+    "Main Debian Repository",
+    "bookworm",                              // Distribution
+    []string{"main", "contrib", "non-free"}, // Sections
+    []string{"amd64"},                       // Architectures
+)
 
 // Check if a package is available
 available, err := repo.CheckPackageAvailability("curl", "7.74.0-1.3", "amd64")

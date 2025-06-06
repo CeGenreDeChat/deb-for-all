@@ -57,7 +57,14 @@ func main() {
 	}
 
 	fmt.Println("\n4. Utilisation d'un dépôt Debian")
-	repo := debian.NewRepository("debian-official", "http://deb.debian.org/debian", "Dépôt officiel Debian")
+	repo := debian.NewRepository(
+		"debian-official",
+		"http://deb.debian.org/debian",
+		"Dépôt officiel Debian",
+		"bookworm",                              // Distribution
+		[]string{"main", "contrib", "non-free"}, // Sections
+		[]string{"amd64"},                       // Architectures
+	)
 
 	available, availErr := repo.CheckPackageAvailability("hello", "2.10-2", "amd64")
 	if availErr != nil {
@@ -195,6 +202,9 @@ func testFetchPackages() {
 		"debian-main",
 		"http://deb.debian.org/debian",
 		"Dépôt principal Debian",
+		"bookworm",                              // Distribution
+		[]string{"main", "contrib", "non-free"}, // Sections
+		[]string{"amd64"},                       // Architectures
 	)
 
 	fmt.Printf("Récupération des paquets depuis: %s\n", repo.URL)

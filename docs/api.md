@@ -251,7 +251,14 @@ if err != nil {
 ### Repository Usage
 
 ```go
-repo := debian.NewRepository("debian-main", "http://deb.debian.org/debian", "Main Debian Repository")
+repo := debian.NewRepository(
+    "debian-main",
+    "http://deb.debian.org/debian",
+    "Main Debian Repository",
+    "bookworm",                              // Distribution
+    []string{"main", "contrib", "non-free"}, // Sections
+    []string{"amd64"},                       // Architectures
+)
 
 // Check availability
 available, err := repo.CheckPackageAvailability("curl", "7.74.0-1.3", "amd64")
