@@ -1,9 +1,14 @@
 package debian
 
 import (
+	"bufio"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+
+	"github.com/ulikunitz/xz"
 )
 
 type Repository struct {
@@ -21,7 +26,40 @@ func NewRepository(name, url, description string) *Repository {
 }
 
 func (r *Repository) FetchPackages() ([]string, error) {
-	return nil, nil
+	distributions := []string{"bookworm", "bullseye", "buster"}
+	sections := []string{"main", "contrib", "non-free"}
+	architecture := "amd64"
+	extensions := []string{"", ".gz", ".xz"}
+
+	var lastErr error
+
+	for _, dist := range distributions {
+		for _, section := range sections {
+			for _, ext := range extensions {
+				packagesURL := r.buildPackagesURLWithDist(dist, section, architecture) + ext
+
+				resp, err := http.Head(packagesURL)
+				if err != nil {
+					lastErr = err
+					continue
+				}
+				resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					lastErr = fmt.Errorf("impossible de récupérer le fichier Packages depuis %s (HTTP %d)", packagesURL, resp.StatusCode)
+					continue
+				}
+
+				if ext == "" {
+					return r.downloadAndParsePackages(packagesURL)
+				} else {
+					return r.downloadAndParseCompressedPackages(packagesURL, ext)
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("impossible de récupérer les paquets depuis toutes les distributions testées: %v", lastErr)
 }
 
 func (r *Repository) SearchPackage(packageName string) (string, error) {
@@ -159,6 +197,108 @@ func (r *Repository) SearchPackageInSources(packageName, version, architecture s
 	}
 
 	return nil, fmt.Errorf("paquet %s_%s_%s non trouvé", packageName, version, architecture)
+}
+
+func (r *Repository) buildPackagesURL(section, architecture string) string {
+	baseURL := strings.TrimSuffix(r.URL, "/")
+	return fmt.Sprintf("%s/dists/stable/%s/binary-%s/Packages", baseURL, section, architecture)
+}
+
+func (r *Repository) buildPackagesURLWithDist(distribution, section, architecture string) string {
+	baseURL := strings.TrimSuffix(r.URL, "/")
+	return fmt.Sprintf("%s/dists/%s/%s/binary-%s/Packages", baseURL, distribution, section, architecture)
+}
+
+func (r *Repository) downloadAndParsePackages(packagesURL string) ([]string, error) {
+	resp, err := http.Get(packagesURL)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("impossible de récupérer le fichier Packages (HTTP %d)", resp.StatusCode)
+	}
+
+	var packages []string
+	scanner := bufio.NewScanner(resp.Body)
+
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024) // Buffer 1MB
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		if strings.HasPrefix(line, "Package:") {
+			packageName := strings.TrimSpace(strings.TrimPrefix(line, "Package:"))
+			if packageName != "" {
+				packages = append(packages, packageName)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages: %v", err)
+	}
+
+	return packages, nil
+}
+
+func (r *Repository) downloadAndParseCompressedPackages(packagesURL string, extension string) ([]string, error) {
+	resp, err := http.Get(packagesURL)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages compressé: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("impossible de récupérer le fichier Packages compressé (HTTP %d)", resp.StatusCode)
+	}
+
+	var reader io.Reader
+
+	switch extension {
+	case ".gz":
+		gzReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("erreur lors de la décompression gzip: %v", err)
+		}
+		defer gzReader.Close()
+		reader = gzReader
+
+	case ".xz":
+		xzReader, err := xz.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("erreur lors de la décompression xz: %v", err)
+		}
+		reader = xzReader
+
+	default:
+		return nil, fmt.Errorf("format de compression non supporté: %s", extension)
+	}
+
+	var packages []string
+	scanner := bufio.NewScanner(reader)
+
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024) // Buffer 1MB
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		if strings.HasPrefix(line, "Package:") {
+			packageName := strings.TrimSpace(strings.TrimPrefix(line, "Package:"))
+			if packageName != "" {
+				packages = append(packages, packageName)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages décompressé: %v", err)
+	}
+
+	return packages, nil
 }
 
 type PackageInfo struct {

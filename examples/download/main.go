@@ -9,7 +9,13 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Exemple de téléchargement de paquets Debian ===")
+	fmt.Println("=== Exemples de gestion des paquets Debian ===")
+
+	// Test de la fonction FetchPackages
+	fmt.Println("\n=== 1. Test de FetchPackages ===")
+	testFetchPackages()
+
+	fmt.Println("\n=== 2. Téléchargement de paquets ===")
 
 	downloadDir := "./downloads"
 	if err := os.MkdirAll(downloadDir, 0755); err != nil {
@@ -180,4 +186,59 @@ func main() {
 	fmt.Println("\n=== Résumé des téléchargements ===")
 	fmt.Printf("Répertoire de téléchargement: %s\n", downloadDir)
 	fmt.Println("Vérifiez le contenu du répertoire pour voir les fichiers téléchargés.")
+}
+
+func testFetchPackages() {
+	fmt.Println("Création d'un dépôt Debian pour tester FetchPackages...")
+
+	repo := debian.NewRepository(
+		"debian-main",
+		"http://deb.debian.org/debian",
+		"Dépôt principal Debian",
+	)
+
+	fmt.Printf("Récupération des paquets depuis: %s\n", repo.URL)
+	fmt.Println("Ceci peut prendre quelques secondes...")
+
+	// Récupérer la liste des paquets
+	packages, err := repo.FetchPackages()
+	if err != nil {
+		fmt.Printf("❌ Erreur lors de la récupération des paquets: %v\n", err)
+		return
+	}
+
+	fmt.Printf("✓ %d paquets trouvés\n", len(packages))
+
+	if len(packages) > 0 {
+		fmt.Println("Premiers 10 paquets:")
+		for i, pkg := range packages {
+			if i >= 10 {
+				break
+			}
+			fmt.Printf("  %d. %s\n", i+1, pkg)
+		}
+
+		if len(packages) > 10 {
+			fmt.Printf("... et %d autres paquets\n", len(packages)-10)
+		}
+	}
+
+	// Rechercher quelques paquets spécifiques
+	fmt.Println("\nRecherche de paquets spécifiques:")
+	searchPackages := []string{"hello", "curl", "vim"}
+
+	for _, searchPkg := range searchPackages {
+		found := false
+		for _, pkg := range packages {
+			if pkg == searchPkg {
+				found = true
+				break
+			}
+		}
+		if found {
+			fmt.Printf("  ✓ %s trouvé\n", searchPkg)
+		} else {
+			fmt.Printf("  ✗ %s non trouvé\n", searchPkg)
+		}
+	}
 }
