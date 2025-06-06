@@ -95,7 +95,7 @@ func (d *Downloader) DownloadWithProgress(pkg *Package, destPath string, progres
 	var downloaded int64
 	var n int
 
-	buffer := make([]byte, 32*1024) // Buffer de 32KB
+	buffer := make([]byte, 32*1024) // Buffer 32KB
 	for {
 		n, err = resp.Body.Read(buffer)
 		if n > 0 {
@@ -120,20 +120,16 @@ func (d *Downloader) DownloadWithProgress(pkg *Package, destPath string, progres
 	return nil
 }
 
-// DownloadSilent télécharge un paquet sans affichage de progression ni messages console.
-// Cette fonction est idéale pour une intégration dans du code Go sans pollution de la sortie.
 func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error {
 	if pkg.DownloadURL == "" {
 		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", pkg.Name)
 	}
 
-	// Créer le répertoire parent s'il n'existe pas
 	dir := filepath.Dir(destPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("impossible de créer le répertoire parent: %v", err)
 	}
 
-	// Configurer le client HTTP
 	client := &http.Client{
 		Timeout: d.Timeout,
 	}
@@ -141,7 +137,6 @@ func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error {
 	var resp *http.Response
 	var lastErr error
 
-	// Tentatives de téléchargement avec retry (sans affichage)
 	for attempt := 1; attempt <= d.RetryAttempts; attempt++ {
 		req, err := http.NewRequest("GET", pkg.DownloadURL, nil)
 		if err != nil {
@@ -155,7 +150,6 @@ func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error {
 			break
 		}
 
-		// Stocker la dernière erreur sans affichage
 		if err != nil {
 			lastErr = err
 		} else {
@@ -167,7 +161,6 @@ func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error {
 			resp = nil
 		}
 
-		// Attendre avant la prochaine tentative (sans message)
 		if attempt < d.RetryAttempts {
 			time.Sleep(2 * time.Second)
 		}
@@ -178,20 +171,17 @@ func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error {
 	}
 	defer resp.Body.Close()
 
-	// Créer le fichier de destination
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		return fmt.Errorf("impossible de créer le fichier de destination: %v", err)
 	}
 	defer destFile.Close()
 
-	// Copier le contenu sans callback de progression
 	_, err = io.Copy(destFile, resp.Body)
 	if err != nil {
 		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
 	}
 
-	// Retourner sans message de succès
 	return nil
 }
 
@@ -285,6 +275,57 @@ func (d *Downloader) DownloadMultiple(packages []*Package, destDir string, maxCo
 	}
 
 	return errors
+}
+
+func (d *Downloader) DownloadSourcePackage(sourcePkg *SourcePackage, destDir string) error {
+	return sourcePkg.downloadFiles(destDir, true, nil)
+}
+
+func (d *Downloader) DownloadSourcePackageSilent(sourcePkg *SourcePackage, destDir string) error {
+	return sourcePkg.downloadFiles(destDir, false, nil)
+}
+
+func (d *Downloader) DownloadSourcePackageWithProgress(sourcePkg *SourcePackage, destDir string, progressCallback func(filename string, downloaded, total int64)) error {
+	return sourcePkg.downloadFiles(destDir, true, progressCallback)
+}
+
+func (d *Downloader) DownloadSourceFile(sourceFile *SourceFile, destDir string) error {
+	if sourceFile.URL == "" {
+		return fmt.Errorf("aucune URL spécifiée pour le fichier %s", sourceFile.Name)
+	}
+
+	destPath := filepath.Join(destDir, sourceFile.Name)
+
+	tempPkg := &Package{
+		Name:        "source-file",
+		DownloadURL: sourceFile.URL,
+		Filename:    sourceFile.Name,
+		Size:        sourceFile.Size,
+	}
+
+	err := d.DownloadWithProgress(tempPkg, destPath, nil)
+	if err != nil {
+		return err
+	}
+
+	if d.VerifyChecksums {
+		if sourceFile.SHA256Sum != "" {
+			return d.verifyChecksum(destPath, sourceFile.SHA256Sum, "sha256")
+		} else if sourceFile.MD5Sum != "" {
+			return d.verifyChecksum(destPath, sourceFile.MD5Sum, "md5")
+		}
+	}
+
+	return nil
+}
+
+func (d *Downloader) DownloadOrigTarball(sourcePkg *SourcePackage, destDir string) error {
+	origFile := sourcePkg.GetOrigTarball()
+	if origFile == nil {
+		return fmt.Errorf("aucun fichier tarball original trouvé pour le paquet source %s", sourcePkg.Name)
+	}
+
+	return d.DownloadSourceFile(origFile, destDir)
 }
 
 func (d *Downloader) GetFileSize(url string) (int64, error) {

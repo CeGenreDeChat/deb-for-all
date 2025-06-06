@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Package struct {
@@ -17,6 +18,24 @@ type Package struct {
 	DownloadURL  string
 	Filename     string
 	Size         int64
+}
+
+type SourcePackage struct {
+	Name        string
+	Version     string
+	Maintainer  string
+	Description string
+	Directory   string
+	Files       []SourceFile
+}
+
+type SourceFile struct {
+	Name      string
+	URL       string
+	Size      int64
+	MD5Sum    string
+	SHA256Sum string
+	Type      string // "orig", "debian", "dsc", etc.
 }
 
 func NewPackage(name, version, architecture, maintainer, description, downloadURL, filename string, size int64) *Package {
@@ -32,21 +51,141 @@ func NewPackage(name, version, architecture, maintainer, description, downloadUR
 	}
 }
 
-func (p *Package) String() string {
-	return p.Name + " (" + p.Version + ") - " + p.Description
+func NewSourcePackage(name, version, maintainer, description, directory string) *SourcePackage {
+	return &SourcePackage{
+		Name:        name,
+		Version:     version,
+		Maintainer:  maintainer,
+		Description: description,
+		Directory:   directory,
+		Files:       make([]SourceFile, 0),
+	}
 }
 
-// Download télécharge le paquet Debian vers le répertoire spécifié avec affichage de confirmation.
+func (sp *SourcePackage) AddFile(name, url string, size int64, md5sum, sha256sum, fileType string) {
+	file := SourceFile{
+		Name:      name,
+		URL:       url,
+		Size:      size,
+		MD5Sum:    md5sum,
+		SHA256Sum: sha256sum,
+		Type:      fileType,
+	}
+	sp.Files = append(sp.Files, file)
+}
+
+func (sp *SourcePackage) GetOrigTarball() *SourceFile {
+	for _, file := range sp.Files {
+		if file.Type == "orig" || strings.Contains(file.Name, ".orig.tar") {
+			return &file
+		}
+	}
+	return nil
+}
+
+func (sp *SourcePackage) GetDebianTarball() *SourceFile {
+	for _, file := range sp.Files {
+		if file.Type == "debian" || strings.Contains(file.Name, ".debian.tar") {
+			return &file
+		}
+	}
+	return nil
+}
+
+func (sp *SourcePackage) GetDSCFile() *SourceFile {
+	for _, file := range sp.Files {
+		if file.Type == "dsc" || strings.HasSuffix(file.Name, ".dsc") {
+			return &file
+		}
+	}
+	return nil
+}
+
+func (sp *SourcePackage) Download(destDir string) error {
+	return sp.downloadFiles(destDir, true, nil)
+}
+
+func (sp *SourcePackage) DownloadSilent(destDir string) error {
+	return sp.downloadFiles(destDir, false, nil)
+}
+
+func (sp *SourcePackage) DownloadWithProgress(destDir string, progressCallback func(filename string, downloaded, total int64)) error {
+	return sp.downloadFiles(destDir, true, progressCallback)
+}
+
+func (sp *SourcePackage) downloadFiles(destDir string, verbose bool, progressCallback func(string, int64, int64)) error {
+	if len(sp.Files) == 0 {
+		return fmt.Errorf("aucun fichier à télécharger pour le paquet source %s", sp.Name)
+	}
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire de destination: %v", err)
+	}
+
+	downloader := NewDownloader()
+
+	for _, file := range sp.Files {
+		destPath := filepath.Join(destDir, file.Name)
+
+		if verbose {
+			fmt.Printf("Téléchargement de %s...\n", file.Name)
+		}
+
+		// Créer un paquet temporaire pour utiliser le downloader existant
+		tempPkg := &Package{
+			Name:        sp.Name,
+			Version:     sp.Version,
+			DownloadURL: file.URL,
+			Filename:    file.Name,
+			Size:        file.Size,
+		}
+
+		var err error
+		if progressCallback != nil {
+			err = downloader.DownloadWithProgress(tempPkg, destPath, func(downloaded, total int64) {
+				progressCallback(file.Name, downloaded, total)
+			})
+		} else if verbose {
+			err = downloader.DownloadWithProgress(tempPkg, destPath, nil)
+		} else {
+			err = downloader.DownloadSilent(tempPkg, destPath)
+		}
+
+		if err != nil {
+			return fmt.Errorf("erreur lors du téléchargement de %s: %v", file.Name, err)
+		}
+
+		// Vérifier les sommes de contrôle si disponibles
+		if file.SHA256Sum != "" {
+			if err := downloader.verifyChecksum(destPath, file.SHA256Sum, "sha256"); err != nil {
+				return fmt.Errorf("erreur de vérification SHA256 pour %s: %v", file.Name, err)
+			}
+		} else if file.MD5Sum != "" {
+			if err := downloader.verifyChecksum(destPath, file.MD5Sum, "md5"); err != nil {
+				return fmt.Errorf("erreur de vérification MD5 pour %s: %v", file.Name, err)
+			}
+		}
+	}
+
+	if verbose {
+		fmt.Printf("Paquet source %s téléchargé avec succès vers %s\n", sp.Name, destDir)
+	}
+
+	return nil
+}
+
+func (sp *SourcePackage) String() string {
+	return fmt.Sprintf("%s (%s) - %s [%d fichiers]", sp.Name, sp.Version, sp.Description, len(sp.Files))
+}
+
 func (p *Package) Download(destDir string) error {
 	return p.downloadToDir(destDir, true)
 }
 
-// DownloadSilent télécharge le paquet Debian vers le répertoire spécifié sans affichage console.
 func (p *Package) DownloadSilent(destDir string) error {
 	return p.downloadToDir(destDir, false)
 }
 
-// downloadToDir est la fonction interne commune pour le téléchargement vers un répertoire.
 func (p *Package) downloadToDir(destDir string, verbose bool) error {
 	if p.DownloadURL == "" {
 		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
@@ -90,17 +229,14 @@ func (p *Package) downloadToDir(destDir string, verbose bool) error {
 	return nil
 }
 
-// DownloadToFile télécharge le paquet Debian vers le fichier spécifié avec affichage de confirmation.
 func (p *Package) DownloadToFile(filePath string) error {
 	return p.downloadToFile(filePath, true)
 }
 
-// DownloadToFileSilent télécharge le paquet Debian vers le fichier spécifié sans affichage console.
 func (p *Package) DownloadToFileSilent(filePath string) error {
 	return p.downloadToFile(filePath, false)
 }
 
-// downloadToFile est la fonction interne commune pour le téléchargement vers un fichier spécifique.
 func (p *Package) downloadToFile(filePath string, verbose bool) error {
 	if p.DownloadURL == "" {
 		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
