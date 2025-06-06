@@ -18,6 +18,7 @@ type Repository struct {
 	Distribution  string
 	Sections      []string
 	Architectures []string
+	Packages      []string
 }
 
 func NewRepository(name, url, description, distribution string, sections, architectures []string) *Repository {
@@ -82,25 +83,25 @@ func (r *Repository) FetchPackages() ([]string, error) {
 	if !foundAtLeastOne {
 		return nil, fmt.Errorf("impossible de récupérer les paquets depuis la distribution %s: %v", r.Distribution, lastErr)
 	}
-
 	result := make([]string, 0, len(allPackages))
 	for pkg := range allPackages {
 		result = append(result, pkg)
 	}
 
+	r.Packages = result
+
 	return result, nil
 }
 
 func (r *Repository) SearchPackage(packageName string) ([]string, error) {
-	allPackages, err := r.FetchPackages()
-	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération des paquets: %v", err)
+	if len(r.Packages) == 0 {
+		return nil, fmt.Errorf("aucun paquet disponible - appelez d'abord FetchPackages()")
 	}
 
 	var matches []string
 	packageNameLower := strings.ToLower(packageName)
 
-	for _, pkg := range allPackages {
+	for _, pkg := range r.Packages {
 		pkgLower := strings.ToLower(pkg)
 
 		if pkg == packageName {
