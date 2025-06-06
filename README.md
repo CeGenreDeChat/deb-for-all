@@ -132,6 +132,35 @@ if err != nil {
 }
 ```
 
+### Complete Package Discovery
+
+```go
+// NEW: FetchPackages now collects ALL packages from ALL configured sections
+repo := debian.NewRepository("debian-complete", "http://deb.debian.org/debian", "Debian",
+    "bookworm", []string{"main", "contrib", "non-free"}, []string{"amd64"})
+
+// This will download and parse Packages files from ALL sections
+packages, err := repo.FetchPackages()
+if err != nil {
+    fmt.Printf("Error: %v\n", err)
+    return
+}
+
+fmt.Printf("Found %d unique packages across all sections!\n", len(packages))
+// Typical result: 80,000+ packages from main + contrib + non-free
+
+// Search for specific packages in the complete list
+searchFor := []string{"firefox", "chromium", "docker", "kubernetes"}
+for _, search := range searchFor {
+    for _, pkg := range packages {
+        if pkg == search {
+            fmt.Printf("✅ %s available\n", search)
+            break
+        }
+    }
+}
+```
+
 ### Multiple Package Downloads
 
 ```go

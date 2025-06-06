@@ -32,70 +32,57 @@ func NewRepository(name, url, description, distribution string, sections, archit
 }
 
 func (r *Repository) FetchPackages() ([]string, error) {
-	distributions := []string{r.Distribution, "bookworm", "bullseye", "buster"}
 	sections := r.Sections
 	architectures := r.Architectures
 	extensions := []string{"", ".gz", ".xz"}
-
-	seen := make(map[string]bool)
-	uniqueDistributions := make([]string, 0)
-	for _, dist := range distributions {
-		if !seen[dist] {
-			seen[dist] = true
-			uniqueDistributions = append(uniqueDistributions, dist)
-		}
-	}
 
 	allPackages := make(map[string]bool)
 	var lastErr error
 	foundAtLeastOne := false
 
-	for _, dist := range uniqueDistributions {
-		for _, section := range sections {
-			for _, arch := range architectures {
-				for _, ext := range extensions {
-					packagesURL := r.buildPackagesURLWithDist(dist, section, arch) + ext
+	for _, section := range sections {
+		for _, arch := range architectures {
+			for _, ext := range extensions {
+				packagesURL := r.buildPackagesURLWithDist(r.Distribution, section, arch) + ext
 
-					resp, err := http.Head(packagesURL)
-					if err != nil {
-						lastErr = err
-						continue
-					}
-					resp.Body.Close()
-
-					if resp.StatusCode != http.StatusOK {
-						lastErr = fmt.Errorf("impossible de récupérer le fichier Packages depuis %s (HTTP %d)", packagesURL, resp.StatusCode)
-						continue
-					}
-
-					var packages []string
-					if ext == "" {
-						packages, err = r.downloadAndParsePackages(packagesURL)
-					} else {
-						packages, err = r.downloadAndParseCompressedPackages(packagesURL, ext)
-					}
-
-					if err != nil {
-						lastErr = err
-						continue
-					}
-
-					for _, pkg := range packages {
-						allPackages[pkg] = true
-					}
-					foundAtLeastOne = true
-
-					break
+				resp, err := http.Head(packagesURL)
+				if err != nil {
+					lastErr = err
+					continue
 				}
+				resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					lastErr = fmt.Errorf("impossible de récupérer le fichier Packages depuis %s (HTTP %d)", packagesURL, resp.StatusCode)
+					continue
+				}
+
+				var packages []string
+				if ext == "" {
+					packages, err = r.downloadAndParsePackages(packagesURL)
+				} else {
+					packages, err = r.downloadAndParseCompressedPackages(packagesURL, ext)
+				}
+
+				if err != nil {
+					lastErr = err
+					continue
+				}
+
+				for _, pkg := range packages {
+					allPackages[pkg] = true
+				}
+				foundAtLeastOne = true
+
+				break
 			}
 		}
 	}
 
 	if !foundAtLeastOne {
-		return nil, fmt.Errorf("impossible de récupérer les paquets depuis toutes les distributions testées: %v", lastErr)
+		return nil, fmt.Errorf("impossible de récupérer les paquets depuis la distribution %s: %v", r.Distribution, lastErr)
 	}
 
-	// Convertir la map en slice
 	result := make([]string, 0, len(allPackages))
 	for pkg := range allPackages {
 		result = append(result, pkg)

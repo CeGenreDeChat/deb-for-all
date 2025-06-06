@@ -155,6 +155,31 @@ func (r *Repository) CheckPackageAvailability(packageName, version, architecture
 ```
 Checks if a package is available in the repository.
 
+#### FetchPackages
+
+```go
+func (r *Repository) FetchPackages() ([]string, error)
+```
+**⚠️ CHANGEMENT MAJEUR**: Cette méthode collecte maintenant TOUS les paquets disponibles depuis TOUTES les sections et architectures configurées dans le repository, au lieu de s'arrêter au premier succès.
+
+**Comportement**:
+- Parcourt toutes les distributions configurées (avec fallback sur bookworm, bullseye, buster)
+- Télécharge les fichiers Packages de TOUTES les sections spécifiées
+- Traite TOUTES les architectures configurées
+- Déduplique automatiquement les noms de paquets
+- Supporte les formats non-compressé, .gz, et .xz
+- Retourne la liste complète des paquets uniques trouvés
+
+**Utilisation recommandée**:
+```go
+repo := debian.NewRepository("debian", "http://deb.debian.org/debian", "Debian",
+    "bookworm", []string{"main", "contrib"}, []string{"amd64"})
+
+// Récupère TOUS les paquets de main ET contrib pour amd64
+packages, err := repo.FetchPackages()
+// Résultat typique: 80,000+ paquets uniques
+```
+
 ### Downloader Methods
 
 #### NewDownloader

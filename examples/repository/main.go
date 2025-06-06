@@ -13,9 +13,9 @@ func main() {
 		"debian-main",
 		"http://deb.debian.org/debian",
 		"Dépôt principal Debian",
-		"bookworm",                              // Distribution
-		[]string{"main"},                        // UNE SEULE section pour le test
-		[]string{"amd64"},                       // Architectures
+		"bookworm",        // Distribution
+		[]string{"main"},  // UNE SEULE section pour le test
+		[]string{"amd64"}, // Architectures
 	)
 
 	fmt.Printf("Récupération des paquets depuis: %s\n", repo.URL)
