@@ -3,9 +3,13 @@ package debian
 import (
 	"bufio"
 	"compress/gzip"
+	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/ulikunitz/xz"
@@ -19,6 +23,8 @@ type Repository struct {
 	Sections      []string
 	Architectures []string
 	Packages      []string
+	ReleaseInfo   *ReleaseFile
+	VerifyRelease bool
 }
 
 func NewRepository(name, url, description, distribution string, sections, architectures []string) *Repository {
@@ -29,10 +35,18 @@ func NewRepository(name, url, description, distribution string, sections, archit
 		Distribution:  distribution,
 		Sections:      sections,
 		Architectures: architectures,
+		VerifyRelease: false,
 	}
 }
 
 func (r *Repository) FetchPackages() ([]string, error) {
+	if r.VerifyRelease {
+		err := r.FetchReleaseFile()
+		if err != nil {
+			return nil, fmt.Errorf("erreur lors de la récupération du fichier Release: %v", err)
+		}
+	}
+
 	sections := r.Sections
 	architectures := r.Architectures
 	extensions := []string{"", ".gz", ".xz"}
@@ -60,9 +74,9 @@ func (r *Repository) FetchPackages() ([]string, error) {
 
 				var packages []string
 				if ext == "" {
-					packages, err = r.downloadAndParsePackages(packagesURL)
+					packages, err = r.downloadAndParsePackagesWithVerification(packagesURL, section, arch)
 				} else {
-					packages, err = r.downloadAndParseCompressedPackages(packagesURL, ext)
+					packages, err = r.downloadAndParseCompressedPackagesWithVerification(packagesURL, ext, section, arch)
 				}
 
 				if err != nil {
@@ -79,7 +93,6 @@ func (r *Repository) FetchPackages() ([]string, error) {
 			}
 		}
 	}
-
 	if !foundAtLeastOne {
 		return nil, fmt.Errorf("impossible de récupérer les paquets depuis la distribution %s: %v", r.Distribution, lastErr)
 	}
@@ -258,7 +271,23 @@ func (r *Repository) buildPackagesURLWithDist(distribution, section, architectur
 	return fmt.Sprintf("%s/dists/%s/%s/binary-%s/Packages", baseURL, distribution, section, architecture)
 }
 
-func (r *Repository) downloadAndParsePackages(packagesURL string) ([]string, error) {
+func (r *Repository) EnableReleaseVerification() {
+	r.VerifyRelease = true
+}
+
+func (r *Repository) DisableReleaseVerification() {
+	r.VerifyRelease = false
+}
+
+func (r *Repository) GetReleaseInfo() *ReleaseFile {
+	return r.ReleaseInfo
+}
+
+func (r *Repository) IsReleaseVerificationEnabled() bool {
+	return r.VerifyRelease
+}
+
+func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, section, architecture string) ([]string, error) {
 	resp, err := http.Get(packagesURL)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages: %v", err)
@@ -269,31 +298,22 @@ func (r *Repository) downloadAndParsePackages(packagesURL string) ([]string, err
 		return nil, fmt.Errorf("impossible de récupérer le fichier Packages (HTTP %d)", resp.StatusCode)
 	}
 
-	var packages []string
-	scanner := bufio.NewScanner(resp.Body)
-
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024) // Buffer 1MB
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		if strings.HasPrefix(line, "Package:") {
-			packageName := strings.TrimSpace(strings.TrimPrefix(line, "Package:"))
-			if packageName != "" {
-				packages = append(packages, packageName)
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages: %v", err)
 	}
 
-	return packages, nil
+	if r.VerifyRelease && r.ReleaseInfo != nil {
+		err = r.VerifyPackagesFileChecksum(section, architecture, data)
+		if err != nil {
+			return nil, fmt.Errorf("échec de la vérification du checksum: %v", err)
+		}
+	}
+
+	return r.parsePackagesData(data)
 }
 
-func (r *Repository) downloadAndParseCompressedPackages(packagesURL string, extension string) ([]string, error) {
+func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packagesURL, extension, section, architecture string) ([]string, error) {
 	resp, err := http.Get(packagesURL)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages compressé: %v", err)
@@ -326,8 +346,25 @@ func (r *Repository) downloadAndParseCompressedPackages(packagesURL string, exte
 		return nil, fmt.Errorf("format de compression non supporté: %s", extension)
 	}
 
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages décompressé: %v", err)
+	}
+
+	if r.VerifyRelease && r.ReleaseInfo != nil {
+		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
+		err = r.verifyDecompressedFileChecksum(filename, data)
+		if err != nil {
+			return nil, fmt.Errorf("échec de la vérification du checksum décompressé: %v", err)
+		}
+	}
+
+	return r.parsePackagesData(data)
+}
+
+func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 	var packages []string
-	scanner := bufio.NewScanner(reader)
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024) // Buffer 1MB
@@ -344,33 +381,44 @@ func (r *Repository) downloadAndParseCompressedPackages(packagesURL string, exte
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages décompressé: %v", err)
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages: %v", err)
 	}
 
 	return packages, nil
 }
 
-// SetDistribution définit la distribution à utiliser
+func (r *Repository) verifyDecompressedFileChecksum(filename string, data []byte) error {
+	for _, checksum := range r.ReleaseInfo.SHA256 {
+		if checksum.Filename == filename {
+			return r.verifyDataChecksum(data, checksum.Hash, "sha256")
+		}
+	}
+
+	for _, checksum := range r.ReleaseInfo.MD5Sum {
+		if checksum.Filename == filename {
+			return r.verifyDataChecksum(data, checksum.Hash, "md5")
+		}
+	}
+
+	return fmt.Errorf("aucun checksum trouvé pour le fichier %s", filename)
+}
+
 func (r *Repository) SetDistribution(distribution string) {
 	r.Distribution = distribution
 }
 
-// SetSections définit les sections à utiliser
 func (r *Repository) SetSections(sections []string) {
 	r.Sections = sections
 }
 
-// SetArchitectures définit les architectures à utiliser
 func (r *Repository) SetArchitectures(architectures []string) {
 	r.Architectures = architectures
 }
 
-// AddSection ajoute une section à la liste existante
 func (r *Repository) AddSection(section string) {
 	r.Sections = append(r.Sections, section)
 }
 
-// AddArchitecture ajoute une architecture à la liste existante
 func (r *Repository) AddArchitecture(architecture string) {
 	r.Architectures = append(r.Architectures, architecture)
 }
@@ -382,4 +430,206 @@ type PackageInfo struct {
 	Section      string
 	DownloadURL  string
 	Size         int64
+}
+
+type ReleaseFile struct {
+	Origin        string
+	Label         string
+	Suite         string
+	Version       string
+	Codename      string
+	Date          string
+	Description   string
+	Architectures []string
+	Components    []string
+	MD5Sum        []FileChecksum
+	SHA1          []FileChecksum
+	SHA256        []FileChecksum
+}
+
+type FileChecksum struct {
+	Hash     string
+	Size     int64
+	Filename string
+}
+
+func (r *Repository) FetchReleaseFile() error {
+	releaseURL := r.buildReleaseURL()
+
+	resp, err := http.Get(releaseURL)
+	if err != nil {
+		return fmt.Errorf("erreur lors de la récupération du fichier Release: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("impossible de récupérer le fichier Release (HTTP %d)", resp.StatusCode)
+	}
+
+	releaseData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("erreur lors de la lecture du fichier Release: %v", err)
+	}
+
+	releaseInfo, err := r.parseReleaseFile(string(releaseData))
+	if err != nil {
+		return fmt.Errorf("erreur lors du parsing du fichier Release: %v", err)
+	}
+
+	r.ReleaseInfo = releaseInfo
+	return nil
+}
+
+func (r *Repository) buildReleaseURL() string {
+	baseURL := strings.TrimSuffix(r.URL, "/")
+	return fmt.Sprintf("%s/dists/%s/Release", baseURL, r.Distribution)
+}
+
+func (r *Repository) parseReleaseFile(content string) (*ReleaseFile, error) {
+	release := &ReleaseFile{
+		Architectures: make([]string, 0),
+		Components:    make([]string, 0),
+		MD5Sum:        make([]FileChecksum, 0),
+		SHA1:          make([]FileChecksum, 0),
+		SHA256:        make([]FileChecksum, 0),
+	}
+
+	lines := strings.Split(content, "\n")
+	currentSection := ""
+
+	for _, line := range lines {
+		originalLine := line
+		line = strings.TrimSpace(line)
+
+		if line == "" {
+			continue
+		}
+
+		if line == "MD5Sum:" {
+			currentSection = "MD5Sum"
+			continue
+		} else if line == "SHA1:" {
+			currentSection = "SHA1"
+			continue
+		} else if line == "SHA256:" {
+			currentSection = "SHA256"
+			continue
+		}
+
+		if currentSection != "" && strings.HasPrefix(originalLine, " ") {
+			checksum, err := r.parseChecksumLine(originalLine)
+			if err != nil {
+				continue // ignore malformed checksum lines
+			}
+
+			switch currentSection {
+			case "MD5Sum":
+				release.MD5Sum = append(release.MD5Sum, *checksum)
+			case "SHA1":
+				release.SHA1 = append(release.SHA1, *checksum)
+			case "SHA256":
+				release.SHA256 = append(release.SHA256, *checksum)
+			}
+			continue
+		}
+
+		// Dectection of new section
+		if !strings.HasPrefix(originalLine, " ") && currentSection != "" {
+			currentSection = ""
+		}
+
+		if parts := strings.SplitN(line, ":", 2); len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+
+			switch key {
+			case "Origin":
+				release.Origin = value
+			case "Label":
+				release.Label = value
+			case "Suite":
+				release.Suite = value
+			case "Version":
+				release.Version = value
+			case "Codename":
+				release.Codename = value
+			case "Date":
+				release.Date = value
+			case "Description":
+				release.Description = value
+			case "Architectures":
+				release.Architectures = strings.Fields(value)
+			case "Components":
+				release.Components = strings.Fields(value)
+			}
+		}
+	}
+
+	return release, nil
+}
+
+func (r *Repository) parseChecksumLine(line string) (*FileChecksum, error) {
+	fields := strings.Fields(line)
+	if len(fields) < 3 {
+		return nil, fmt.Errorf("ligne de checksum malformée: %s", line)
+	}
+
+	hash := fields[0]
+	sizeStr := fields[1]
+	filename := fields[2]
+
+	size, err := strconv.ParseInt(sizeStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("taille invalide dans la ligne de checksum: %s", sizeStr)
+	}
+
+	return &FileChecksum{
+		Hash:     hash,
+		Size:     size,
+		Filename: filename,
+	}, nil
+}
+
+func (r *Repository) VerifyPackagesFileChecksum(section, architecture string, data []byte) error {
+	if r.ReleaseInfo == nil {
+		return fmt.Errorf("informations Release non disponibles - appelez d'abord FetchReleaseFile()")
+	}
+
+	filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
+
+	for _, checksum := range r.ReleaseInfo.SHA256 {
+		if checksum.Filename == filename {
+			return r.verifyDataChecksum(data, checksum.Hash, "sha256")
+		}
+	}
+
+	for _, checksum := range r.ReleaseInfo.MD5Sum {
+		if checksum.Filename == filename {
+			return r.verifyDataChecksum(data, checksum.Hash, "md5")
+		}
+	}
+
+	return fmt.Errorf("aucun checksum trouvé pour le fichier %s", filename)
+}
+
+func (r *Repository) verifyDataChecksum(data []byte, expectedHash, hashType string) error {
+	var hasher hash.Hash
+
+	switch strings.ToLower(hashType) {
+	case "md5":
+		hasher = md5.New()
+	case "sha256":
+		hasher = sha256.New()
+	default:
+		return fmt.Errorf("type de hash non supporté: %s", hashType)
+	}
+
+	hasher.Write(data)
+	actualHash := fmt.Sprintf("%x", hasher.Sum(nil))
+
+	if actualHash != strings.ToLower(expectedHash) {
+		return fmt.Errorf("checksum %s invalide. Attendu: %s, Actuel: %s", hashType, expectedHash, actualHash)
+	}
+
+	return nil
 }
