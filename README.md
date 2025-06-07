@@ -52,14 +52,17 @@ func main() {
         Filename:     "example-package_1.0.0_amd64.deb",
     }
 
-    // Simple download
-    err := pkg.Download("./downloads")
+    // Create a downloader
+    downloader := debian.NewDownloader()
+
+    // Simple download to directory
+    err := downloader.DownloadToDir(pkg, "./downloads")
     if err != nil {
         fmt.Printf("Download failed: %v\n", err)
     }
 
     // Silent download (no console output)
-    err = pkg.DownloadSilent("./downloads")
+    err = downloader.DownloadToDirSilent(pkg, "./downloads")
     if err != nil {
         // Handle error quietly
         log.Printf("Silent download failed: %v", err)
@@ -100,7 +103,8 @@ func downloadQuietly(packageURL, destDir string) error {
         DownloadURL: packageURL,
     }
 
-    return pkg.DownloadSilent(destDir)
+    downloader := debian.NewDownloader()
+    return downloader.DownloadToDirSilent(pkg, destDir)
 }
 ```
 

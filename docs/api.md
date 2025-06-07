@@ -97,19 +97,7 @@ This function searches for packages by name and returns a list of matching packa
 
 ### Package Methods
 
-#### Download
-
-```go
-func (p *Package) Download(destDir string) error
-```
-Downloads the Debian package to the specified directory.
-
-#### DownloadToFile
-
-```go
-func (p *Package) DownloadToFile(filePath string) error
-```
-Downloads the package to a specific file path.
+Package struct contains only metadata. All download functionality has been moved to Downloader for better separation of concerns.
 
 #### GetDownloadInfo
 
@@ -117,20 +105,6 @@ Downloads the package to a specific file path.
 func (p *Package) GetDownloadInfo() (*DownloadInfo, error)
 ```
 Retrieves download information without downloading the file.
-
-#### DownloadSilent
-
-```go
-func (p *Package) DownloadSilent(destDir string) error
-```
-Downloads the package silently to the specified directory without any console output. Perfect for integration into Go applications without output pollution.
-
-#### DownloadToFileSilent
-
-```go
-func (p *Package) DownloadToFileSilent(filePath string) error
-```
-Downloads the package silently to a specific file path without any console output.
 
 ### Repository Methods
 
@@ -224,6 +198,20 @@ func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error
 ```
 Downloads a package silently without any console output or progress reporting. Ideal for integration into Go code without polluting the output.
 
+#### DownloadToDir
+
+```go
+func (d *Downloader) DownloadToDir(pkg *Package, destDir string) error
+```
+Downloads a package to a directory with automatic filename generation based on package metadata.
+
+#### DownloadToDirSilent
+
+```go
+func (d *Downloader) DownloadToDirSilent(pkg *Package, destDir string) error
+```
+Downloads a package to a directory silently with automatic filename generation. No console output.
+
 ## Error Handling
 
 The library defines custom error types to handle specific errors related to package management and downloading. These errors can be used to provide more context when an operation fails.
@@ -249,7 +237,9 @@ func main() {
         Filename:     "example-package_1.0.0_amd64.deb",
     }
 
-    err := pkg.Download("./downloads")
+    // Use Downloader for all download operations
+    downloader := debian.NewDownloader()
+    err := downloader.DownloadToDir(pkg, "./downloads")
     if err != nil {
         fmt.Printf("Download failed: %v\n", err)
     }

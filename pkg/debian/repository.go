@@ -144,20 +144,21 @@ func (r *Repository) DownloadPackage(packageName, version, architecture, destDir
 		Filename:     fmt.Sprintf("%s_%s_%s.deb", packageName, version, architecture),
 	}
 
-	return pkg.Download(destDir)
+	downloader := NewDownloader()
+	return downloader.DownloadToDirSilent(pkg, destDir)
 }
 
 func (r *Repository) DownloadPackageByURL(packageURL, destDir string) error {
 	parts := strings.Split(packageURL, "/")
 	filename := parts[len(parts)-1]
-
 	pkg := &Package{
 		Name:        strings.Split(filename, "_")[0],
 		DownloadURL: packageURL,
 		Filename:    filename,
 	}
 
-	return pkg.Download(destDir)
+	downloader := NewDownloader()
+	return downloader.DownloadToDirSilent(pkg, destDir)
 }
 
 func (r *Repository) buildPackageURL(packageName, version, architecture string) string {
@@ -221,8 +222,7 @@ func (r *Repository) DownloadPackageFromSources(packageName, version, architectu
 		}
 		resp.Body.Close()
 
-		if resp.StatusCode == http.StatusOK {
-			pkg := &Package{
+		if resp.StatusCode == http.StatusOK {		pkg := &Package{
 				Name:         packageName,
 				Version:      version,
 				Architecture: architecture,
@@ -230,7 +230,8 @@ func (r *Repository) DownloadPackageFromSources(packageName, version, architectu
 				Filename:     fmt.Sprintf("%s_%s_%s.deb", packageName, version, architecture),
 			}
 
-			return pkg.Download(destDir)
+			downloader := NewDownloader()
+			return downloader.DownloadToDirSilent(pkg, destDir)
 		}
 
 		lastErr = fmt.Errorf("paquet non trouvé dans la section %s (HTTP %d)", section, resp.StatusCode)

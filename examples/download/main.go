@@ -81,9 +81,8 @@ func main() {
 	} else {
 		fmt.Printf(" ✅ Succès (sans affichage de progression)\n")
 	}
-
-	fmt.Printf("Test méthode Package.DownloadSilent()...")
-	err = testPkg.DownloadSilent(downloadDir)
+	fmt.Printf("Test avec Downloader.DownloadToDirSilent()...")
+	err = downloader.DownloadToDirSilent(testPkg, downloadDir)
 	if err != nil {
 		fmt.Printf(" ❌ Erreur: %v\n", err)
 	} else {

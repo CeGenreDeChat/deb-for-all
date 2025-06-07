@@ -2,7 +2,6 @@ package debian
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -178,101 +177,7 @@ func (sp *SourcePackage) String() string {
 	return fmt.Sprintf("%s (%s) - %s [%d fichiers]", sp.Name, sp.Version, sp.Description, len(sp.Files))
 }
 
-func (p *Package) Download(destDir string) error {
-	return p.downloadToDir(destDir, true)
-}
-
-func (p *Package) DownloadSilent(destDir string) error {
-	return p.downloadToDir(destDir, false)
-}
-
-func (p *Package) downloadToDir(destDir string, verbose bool) error {
-	if p.DownloadURL == "" {
-		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
-	}
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de destination: %v", err)
-	}
-
-	filename := p.Filename
-	if filename == "" {
-		filename = fmt.Sprintf("%s_%s_%s.deb", p.Name, p.Version, p.Architecture)
-	}
-
-	destPath := filepath.Join(destDir, filename)
-
-	resp, err := http.Get(p.DownloadURL)
-	if err != nil {
-		return fmt.Errorf("erreur lors du téléchargement: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("échec du téléchargement: statut HTTP %d", resp.StatusCode)
-	}
-
-	destFile, err := os.Create(destPath)
-	if err != nil {
-		return fmt.Errorf("impossible de créer le fichier de destination: %v", err)
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, resp.Body)
-	if err != nil {
-		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
-	}
-
-	if verbose {
-		fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", p.Name, destPath)
-	}
-	return nil
-}
-
-func (p *Package) DownloadToFile(filePath string) error {
-	return p.downloadToFile(filePath, true)
-}
-
-func (p *Package) DownloadToFileSilent(filePath string) error {
-	return p.downloadToFile(filePath, false)
-}
-
-func (p *Package) downloadToFile(filePath string, verbose bool) error {
-	if p.DownloadURL == "" {
-		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
-	}
-
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire parent: %v", err)
-	}
-
-	resp, err := http.Get(p.DownloadURL)
-	if err != nil {
-		return fmt.Errorf("erreur lors du téléchargement: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("échec du téléchargement: statut HTTP %d", resp.StatusCode)
-	}
-
-	destFile, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("impossible de créer le fichier de destination: %v", err)
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, resp.Body)
-	if err != nil {
-		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
-	}
-
-	if verbose {
-		fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", p.Name, filePath)
-	}
-	return nil
-}
+// Package now only contains metadata - all download functionality moved to Downloader
 
 func (p *Package) GetDownloadInfo() (*DownloadInfo, error) {
 	if p.DownloadURL == "" {

@@ -350,3 +350,23 @@ func (d *Downloader) GetFileSize(url string) (int64, error) {
 
 	return resp.ContentLength, nil
 }
+
+// DownloadToDir downloads a package to a directory with automatic filename generation
+func (d *Downloader) DownloadToDir(pkg *Package, destDir string) error {
+	filename := pkg.Filename
+	if filename == "" {
+		filename = fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
+	}
+	destPath := filepath.Join(destDir, filename)
+	return d.DownloadWithProgress(pkg, destPath, nil)
+}
+
+// DownloadToDirSilent downloads a package to a directory silently with automatic filename generation
+func (d *Downloader) DownloadToDirSilent(pkg *Package, destDir string) error {
+	filename := pkg.Filename
+	if filename == "" {
+		filename = fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
+	}
+	destPath := filepath.Join(destDir, filename)
+	return d.DownloadSilent(pkg, destPath)
+}
