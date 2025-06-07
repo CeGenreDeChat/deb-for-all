@@ -35,7 +35,7 @@ func NewRepository(name, url, description, distribution string, sections, archit
 		Distribution:  distribution,
 		Sections:      sections,
 		Architectures: architectures,
-		VerifyRelease: false,
+		VerifyRelease: true,
 	}
 }
 

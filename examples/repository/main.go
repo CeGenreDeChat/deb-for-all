@@ -24,14 +24,16 @@ func main() {
 		[]string{"main"},
 		[]string{"amd64"},
 	)
-
 	fmt.Printf("Récupération des paquets depuis: %s\n", repo.URL)
 	fmt.Printf("Distribution: %s\n", repo.Distribution)
 	fmt.Printf("Sections: %v\n", repo.Sections)
 	fmt.Printf("Architectures: %v\n", repo.Architectures)
-	fmt.Printf("Vérification Release activée: %t\n", repo.IsReleaseVerificationEnabled())
+	fmt.Printf("Vérification Release activée par défaut: %t\n", repo.IsReleaseVerificationEnabled())
 	fmt.Println("⚠️ ATTENTION: Cette fonction va maintenant télécharger TOUS les fichiers Packages")
 	fmt.Println("de toutes les sections et architectures (peut prendre plusieurs minutes)...")
+	fmt.Println("Désactivation temporaire de la vérification Release pour ce test basique...")
+	repo.DisableReleaseVerification()
+	fmt.Printf("Vérification Release désactivée: %t\n", repo.IsReleaseVerificationEnabled())
 	fmt.Println("Ceci peut prendre quelques secondes pour télécharger et décompresser...")
 
 	packages, err := repo.FetchPackages()
@@ -47,18 +49,20 @@ func main() {
 		}
 		fmt.Printf("  %d. %s\n", i+1, pkg)
 	}
-
 	if len(packages) > 20 {
 		fmt.Printf("\n... et %d autres paquets\n", len(packages)-20)
 	}
 
+	// Réactiver la vérification Release pour la suite des tests
+	fmt.Println("\nRéactivation de la vérification Release pour les tests suivants...")
+	repo.EnableReleaseVerification()
+	fmt.Printf("Vérification Release réactivée: %t\n", repo.IsReleaseVerificationEnabled())
 	// ========================================
 	// PARTIE 2: Vérification Release
 	// ========================================
 	fmt.Println("\n🔒 PARTIE 2: Test de la vérification des fichiers Release")
 
-	fmt.Println("\n--- Activation de la vérification Release ---")
-	repo.EnableReleaseVerification()
+	fmt.Println("\n--- Vérification Release (activée par défaut) ---")
 	fmt.Printf("Vérification Release activée: %t\n", repo.IsReleaseVerificationEnabled())
 
 	fmt.Println("Récupération du fichier Release...")
@@ -135,7 +139,6 @@ func main() {
 			}
 		}
 	}
-
 	fmt.Println("\n--- Test de récupération avec vérification Release ---")
 	// Créer un nouveau repository pour un test propre
 	verifiedRepo := debian.NewRepository(
@@ -147,7 +150,7 @@ func main() {
 		[]string{"amd64"},
 	)
 
-	verifiedRepo.EnableReleaseVerification()
+	fmt.Printf("Vérification Release activée par défaut: %t\n", verifiedRepo.IsReleaseVerificationEnabled())
 	fmt.Println("Récupération des paquets avec vérification Release activée...")
 
 	verifiedPackages, err := verifiedRepo.FetchPackages()
@@ -165,7 +168,6 @@ func main() {
 
 	for _, dist := range distributions {
 		fmt.Printf("\nTest avec distribution: %s\n", dist)
-
 		testRepo := debian.NewRepository(
 			fmt.Sprintf("debian-%s", dist),
 			"http://deb.debian.org/debian",
@@ -175,7 +177,7 @@ func main() {
 			[]string{"amd64"},
 		)
 
-		testRepo.EnableReleaseVerification()
+		fmt.Printf("  Vérification Release activée par défaut: %t\n", testRepo.IsReleaseVerificationEnabled())
 
 		err := testRepo.FetchReleaseFile()
 		if err != nil {
@@ -201,8 +203,9 @@ func main() {
 		[]string{"main"},
 		[]string{"amd64"},
 	)
-
 	fmt.Println("Test Ubuntu sans vérification Release...")
+	ubuntuRepo.DisableReleaseVerification()
+	fmt.Printf("Vérification Release désactivée: %t\n", ubuntuRepo.IsReleaseVerificationEnabled())
 	ubuntuPackages, err := ubuntuRepo.FetchPackages()
 	if err != nil {
 		fmt.Printf("❌ Erreur Ubuntu sans vérification: %v\n", err)
@@ -210,7 +213,7 @@ func main() {
 		fmt.Printf("✓ Ubuntu sans vérification: %d paquets\n", len(ubuntuPackages))
 	}
 
-	fmt.Println("Activation de la vérification Release pour Ubuntu...")
+	fmt.Println("Réactivation de la vérification Release pour Ubuntu...")
 	ubuntuRepo.EnableReleaseVerification()
 
 	err = ubuntuRepo.FetchReleaseFile()
@@ -234,7 +237,6 @@ func main() {
 	// PARTIE 6: Tests de gestion d'erreurs (intégré depuis error-handling)
 	// ========================================
 	fmt.Println("\n⚠️ PARTIE 6: Tests de gestion d'erreurs")
-
 	fmt.Println("\n--- Test avec URL invalide ---")
 	badRepo := debian.NewRepository(
 		"bad-repo",
@@ -245,14 +247,13 @@ func main() {
 		[]string{"amd64"},
 	)
 
-	badRepo.EnableReleaseVerification()
+	fmt.Printf("Vérification Release activée par défaut: %t\n", badRepo.IsReleaseVerificationEnabled())
 	err = badRepo.FetchReleaseFile()
 	if err != nil {
 		fmt.Printf("✓ Erreur attendue capturée: %v\n", err)
 	} else {
 		fmt.Printf("❌ Erreur attendue mais non capturée\n")
 	}
-
 	fmt.Println("\n--- Test avec distribution inexistante ---")
 	invalidDistRepo := debian.NewRepository(
 		"invalid-dist",
@@ -263,7 +264,7 @@ func main() {
 		[]string{"amd64"},
 	)
 
-	invalidDistRepo.EnableReleaseVerification()
+	fmt.Printf("Vérification Release activée par défaut: %t\n", invalidDistRepo.IsReleaseVerificationEnabled())
 	err = invalidDistRepo.FetchReleaseFile()
 	if err != nil {
 		fmt.Printf("✓ Erreur distribution inexistante capturée: %v\n", err)

@@ -43,14 +43,14 @@ type FileChecksum struct {
 
 #### Configuration
 ```go
-// Activer la vérification Release
-repo.EnableReleaseVerification()
+// La vérification Release est activée par défaut
+enabled := repo.IsReleaseVerificationEnabled() // true
 
-// Désactiver la vérification Release
+// Désactiver la vérification Release si nécessaire
 repo.DisableReleaseVerification()
 
-// Vérifier si la vérification est activée
-enabled := repo.IsReleaseVerificationEnabled()
+// Réactiver la vérification Release
+repo.EnableReleaseVerification()
 ```
 
 #### Récupération et parsing
@@ -87,19 +87,23 @@ repo := debian.NewRepository(
     []string{"amd64"},
 )
 
-// Activer la vérification Release
-repo.EnableReleaseVerification()
+// La vérification Release est activée par défaut
+fmt.Printf("Vérification activée: %t\n", repo.IsReleaseVerificationEnabled()) // true
 
 // Les paquets seront automatiquement vérifiés
 packages, err := repo.FetchPackages()
 if err != nil {
     log.Fatal(err)
 }
+
+// Pour désactiver la vérification si nécessaire
+repo.DisableReleaseVerification()
 ```
 
 ### Exemple avec informations Release
 ```go
-repo.EnableReleaseVerification()
+// La vérification est activée par défaut
+repo := debian.NewRepository(...)
 
 // Récupérer explicitement le fichier Release
 err := repo.FetchReleaseFile()
@@ -154,9 +158,9 @@ if err != nil {
 - ✅ **Formats** : Packages, Packages.gz, Packages.xz
 
 ### Rétrocompatibilité
-- Par défaut, `VerifyRelease` est `false` pour maintenir la compatibilité
-- L'API existante fonctionne sans changements
-- Les applications existantes peuvent activer la vérification graduellement
+- **BREAKING CHANGE**: `VerifyRelease` est maintenant `true` par défaut pour une sécurité accrue
+- Les applications existantes doivent explicitement désactiver la vérification si nécessaire avec `DisableReleaseVerification()`
+- L'API existante fonctionne sans changements de code
 
 ## Exemples complets
 
