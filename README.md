@@ -187,6 +187,46 @@ You can find more examples in the `examples/` directory:
 - `examples/basic/` - Basic usage example
 - `examples/download/` - Real download examples with Debian packages
 
+## Migration Guide (v2.0.0)
+
+**⚠️ BREAKING CHANGES in v2.0.0**
+
+This version introduces a major architectural change that improves code organization by following the Single Responsibility Principle.
+
+### What Changed
+
+All download methods have been **removed** from the `Package` struct and **centralized** in the `Downloader` struct:
+
+- ❌ `pkg.Download()` - **REMOVED**
+- ❌ `pkg.DownloadSilent()` - **REMOVED** 
+- ❌ `pkg.DownloadToFile()` - **REMOVED**
+- ❌ `pkg.DownloadToFileSilent()` - **REMOVED**
+
+### Migration Steps
+
+**Before (v1.x):**
+```go
+pkg := &debian.Package{...}
+err := pkg.Download("./downloads")           // Old API
+err := pkg.DownloadSilent("./downloads")     // Old API
+```
+
+**After (v2.0.0+):**
+```go
+pkg := &debian.Package{...}
+downloader := debian.NewDownloader()
+err := downloader.DownloadToDir(pkg, "./downloads")      // New API
+err := downloader.DownloadToDirSilent(pkg, "./downloads") // New API
+```
+
+This change provides:
+- ✅ Clear separation of concerns
+- ✅ Better testability
+- ✅ Centralized download configuration
+- ✅ No more code duplication
+
+For detailed migration information, see [REFACTORING_SUMMARY.md](docs/REFACTORING_SUMMARY.md).
+
 ## Command-Line Tool
 
 The project also includes a command-line tool. To run the tool, navigate to the `cmd/deb-for-all` directory and execute:
