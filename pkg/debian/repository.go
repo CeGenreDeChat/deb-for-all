@@ -222,7 +222,8 @@ func (r *Repository) DownloadPackageFromSources(packageName, version, architectu
 		}
 		resp.Body.Close()
 
-		if resp.StatusCode == http.StatusOK {		pkg := &Package{
+		if resp.StatusCode == http.StatusOK {
+			pkg := &Package{
 				Name:         packageName,
 				Version:      version,
 				Architecture: architecture,
