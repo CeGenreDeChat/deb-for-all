@@ -325,7 +325,7 @@ func (m *Mirror) downloadPackagesForArch(suite, component, arch string) error {
 
 	// Download each package
 	for _, packageName := range packages {
-		if err := m.downloadPackageByName(packageName, suite, component, arch); err != nil {
+		if err := m.downloadPackageByName(packageName, component, arch); err != nil {
 			if m.config.Verbose {
 				fmt.Printf("Warning: failed to download package %s: %v\n", packageName, err)
 			}
@@ -337,18 +337,7 @@ func (m *Mirror) downloadPackagesForArch(suite, component, arch string) error {
 }
 
 // downloadPackageByName downloads a package by name using Repository functionality
-func (m *Mirror) downloadPackageByName(packageName, suite, component, arch string) error {
-	// Use Repository to download the package
-	tempRepo := NewRepository(
-		"temp-mirror-repo",
-		m.config.BaseURL,
-		"Temporary repository for mirror",
-		suite,
-		[]string{component},
-		[]string{arch},
-	)
-
-	// Create package directory structure based on pool layout
+func (m *Mirror) downloadPackageByName(packageName, component, arch string) error {
 	firstLetter := string(packageName[0])
 	if strings.HasPrefix(packageName, "lib") && len(packageName) > 3 {
 		firstLetter = packageName[:4] // lib packages use first 4 characters
@@ -359,16 +348,22 @@ func (m *Mirror) downloadPackageByName(packageName, suite, component, arch strin
 		return fmt.Errorf("failed to create package directory: %w", err)
 	}
 
-	// Try to find the package and download it
-	// For now, we'll try a standard version approach
-	// In a real implementation, you'd parse the Packages file to get exact versions
 	if m.config.Verbose {
 		fmt.Printf("Downloading package: %s\n", packageName)
 	}
 
-	// Use repository to download - for simplicity, we'll use a common pattern
-	// In practice, you'd need to parse the Packages file to get the exact version and architecture
-	return tempRepo.DownloadPackageFromSources(packageName, "latest", arch, packageDir, []string{component})
+	packageURL := fmt.Sprintf("%s/pool/%s/%s/%s", m.config.BaseURL, component, firstLetter, packageName)
+
+	pkg := &Package{
+		Name:         packageName,
+		Architecture: arch,
+		DownloadURL:  packageURL,
+		Filename:     fmt.Sprintf("%s_%s.deb", packageName, arch),
+	}
+
+	fmt.Printf("Downloading %s to %s\n", pkg.DownloadURL, packageDir)
+
+	return m.downloader.DownloadToDir(pkg, packageDir)
 }
 
 // GetMirrorInfo returns information about the current mirror
