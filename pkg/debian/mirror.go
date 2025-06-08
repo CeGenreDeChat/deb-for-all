@@ -7,23 +7,15 @@ import (
 	"strings"
 )
 
-// MirrorConfig represents the configuration for mirroring a Debian repository
 type MirrorConfig struct {
-	// BaseURL is the URL of the repository to mirror
-	BaseURL string
-	// Suites are the distribution suites to mirror (e.g., "bookworm", "bullseye")
-	Suites []string
-	// Components are the repository components to mirror (e.g., "main", "contrib", "non-free")
-	Components []string
-	// Architectures are the architectures to mirror (e.g., "amd64", "arm64", "all")
-	Architectures []string
-	// DownloadPackages indicates whether to download .deb files or just metadata
+	BaseURL          string
+	Suites           []string
+	Components       []string
+	Architectures    []string
 	DownloadPackages bool
-	// Verbose enables verbose output
-	Verbose bool
+	Verbose          bool
 }
 
-// Validate checks if the MirrorConfig is valid
 func (c *MirrorConfig) Validate() error {
 	if c.BaseURL == "" {
 		return fmt.Errorf("BaseURL is required")
@@ -38,7 +30,6 @@ func (c *MirrorConfig) Validate() error {
 		return fmt.Errorf("at least one architecture is required")
 	}
 
-	// Validate URL format
 	if !strings.HasPrefix(c.BaseURL, "http://") && !strings.HasPrefix(c.BaseURL, "https://") {
 		return fmt.Errorf("BaseURL must start with http:// or https://")
 	}
@@ -46,7 +37,6 @@ func (c *MirrorConfig) Validate() error {
 	return nil
 }
 
-// Mirror represents a Debian repository mirror that uses Repository as its foundation
 type Mirror struct {
 	config     MirrorConfig
 	repository *Repository
@@ -54,9 +44,7 @@ type Mirror struct {
 	basePath   string
 }
 
-// NewMirror creates a new Mirror instance with the given configuration
 func NewMirror(config MirrorConfig, basePath string) *Mirror {
-	// Create a repository instance for each suite - we'll update it as needed
 	repo := NewRepository(
 		"mirror-repo",
 		config.BaseURL,
@@ -74,18 +62,15 @@ func NewMirror(config MirrorConfig, basePath string) *Mirror {
 	}
 }
 
-// Clone creates a complete mirror of the configured repository
 func (m *Mirror) Clone() error {
 	if m.config.Verbose {
 		fmt.Printf("Starting mirror of %s to %s\n", m.config.BaseURL, m.basePath)
 	}
 
-	// Create base directory structure
 	if err := os.MkdirAll(m.basePath, 0755); err != nil {
 		return fmt.Errorf("failed to create base directory: %w", err)
 	}
 
-	// Mirror each suite
 	for _, suite := range m.config.Suites {
 		if err := m.mirrorSuite(suite); err != nil {
 			return fmt.Errorf("failed to mirror suite %s: %w", suite, err)
@@ -107,27 +92,22 @@ func (m *Mirror) Sync() error {
 	return m.Clone()
 }
 
-// mirrorSuite mirrors a specific suite (distribution) using Repository methods
 func (m *Mirror) mirrorSuite(suite string) error {
 	if m.config.Verbose {
 		fmt.Printf("Mirroring suite: %s\n", suite)
 	}
 
-	// Update repository configuration for this suite
 	m.repository.SetDistribution(suite)
 
-	// Create suite directory structure
 	suitePath := filepath.Join(m.basePath, "dists", suite)
 	if err := os.MkdirAll(suitePath, 0755); err != nil {
 		return fmt.Errorf("failed to create suite directory: %w", err)
 	}
 
-	// Download Release file using Repository method
 	if err := m.downloadReleaseFile(suite); err != nil {
 		return fmt.Errorf("failed to download Release file: %w", err)
 	}
 
-	// Mirror each component
 	for _, component := range m.config.Components {
 		if err := m.mirrorComponent(suite, component); err != nil {
 			return fmt.Errorf("failed to mirror component %s: %w", component, err)
@@ -137,7 +117,6 @@ func (m *Mirror) mirrorSuite(suite string) error {
 	return nil
 }
 
-// downloadReleaseFile downloads the Release file using Repository functionality
 func (m *Mirror) downloadReleaseFile(suite string) error {
 	releasePath := filepath.Join(m.basePath, "dists", suite, "Release")
 
@@ -145,24 +124,19 @@ func (m *Mirror) downloadReleaseFile(suite string) error {
 		fmt.Printf("Downloading Release file for suite: %s\n", suite)
 	}
 
-	// Update repository for this suite
 	m.repository.SetDistribution(suite)
 
-	// Fetch Release file using Repository method
 	if err := m.repository.FetchReleaseFile(); err != nil {
 		return fmt.Errorf("failed to fetch Release file: %w", err)
 	}
 
-	// Get Release info and save to file
 	releaseInfo := m.repository.GetReleaseInfo()
 	if releaseInfo == nil {
 		return fmt.Errorf("no Release information available")
 	}
 
-	// Build Release file content from parsed data
 	releaseContent := m.buildReleaseFileContent(releaseInfo)
 
-	// Write Release file to mirror
 	if err := os.WriteFile(releasePath, []byte(releaseContent), 0644); err != nil {
 		return fmt.Errorf("failed to write Release file: %w", err)
 	}
@@ -170,7 +144,6 @@ func (m *Mirror) downloadReleaseFile(suite string) error {
 	return nil
 }
 
-// buildReleaseFileContent reconstructs Release file content from ReleaseFile struct
 func (m *Mirror) buildReleaseFileContent(release *ReleaseFile) string {
 	var content strings.Builder
 
@@ -209,13 +182,11 @@ func (m *Mirror) buildReleaseFileContent(release *ReleaseFile) string {
 	return content.String()
 }
 
-// mirrorComponent mirrors a specific component within a suite
 func (m *Mirror) mirrorComponent(suite, component string) error {
 	if m.config.Verbose {
 		fmt.Printf("Mirroring component: %s/%s\n", suite, component)
 	}
 
-	// Mirror each architecture
 	for _, arch := range m.config.Architectures {
 		if err := m.mirrorArchitecture(suite, component, arch); err != nil {
 			return fmt.Errorf("failed to mirror architecture %s: %w", arch, err)
@@ -225,24 +196,20 @@ func (m *Mirror) mirrorComponent(suite, component string) error {
 	return nil
 }
 
-// mirrorArchitecture mirrors a specific architecture within a component
 func (m *Mirror) mirrorArchitecture(suite, component, arch string) error {
 	if m.config.Verbose {
 		fmt.Printf("Mirroring architecture: %s/%s/%s\n", suite, component, arch)
 	}
 
-	// Create architecture directory structure
 	archPath := filepath.Join(m.basePath, "dists", suite, component, fmt.Sprintf("binary-%s", arch))
 	if err := os.MkdirAll(archPath, 0755); err != nil {
 		return fmt.Errorf("failed to create architecture directory: %w", err)
 	}
 
-	// Download Packages file
 	if err := m.downloadPackagesFile(suite, component, arch); err != nil {
 		return fmt.Errorf("failed to download Packages file: %w", err)
 	}
 
-	// Download packages if requested
 	if m.config.DownloadPackages {
 		if err := m.downloadPackagesForArch(suite, component, arch); err != nil {
 			return fmt.Errorf("failed to download packages: %w", err)
@@ -252,12 +219,10 @@ func (m *Mirror) mirrorArchitecture(suite, component, arch string) error {
 	return nil
 }
 
-// downloadPackagesFile downloads the Packages file for a specific architecture
 func (m *Mirror) downloadPackagesFile(suite, component, arch string) error {
 	baseURL := fmt.Sprintf("%s/dists/%s/%s/binary-%s/Packages", m.config.BaseURL, suite, component, arch)
 	packagesDir := filepath.Join(m.basePath, "dists", suite, component, fmt.Sprintf("binary-%s", arch))
 
-	// Try different extensions in order of preference
 	extensions := []string{".gz", ".xz", ""}
 	var lastErr error
 
@@ -270,7 +235,6 @@ func (m *Mirror) downloadPackagesFile(suite, component, arch string) error {
 			fmt.Printf("Trying to download Packages file: %s\n", packagesURL)
 		}
 
-		// Create a temporary package for downloading
 		tempPkg := &Package{
 			Name:        "packages-file",
 			DownloadURL: packagesURL,
@@ -300,30 +264,24 @@ func (m *Mirror) downloadPackagesFile(suite, component, arch string) error {
 	return fmt.Errorf("failed to download Packages file with any extension: %w", lastErr)
 }
 
-// downloadPackagesForArch downloads all .deb packages for a specific architecture
 func (m *Mirror) downloadPackagesForArch(suite, component, arch string) error {
 	if m.config.Verbose {
 		fmt.Printf("Downloading packages for %s/%s/%s\n", suite, component, arch)
 	}
 
-	// Update repository configuration for this suite and component
 	m.repository.SetDistribution(suite)
 	m.repository.SetSections([]string{component})
-	m.repository.SetArchitectures([]string{arch})
 
-	// Get package names using Repository
 	packages, err := m.repository.FetchPackages()
 	if err != nil {
 		return fmt.Errorf("failed to get packages list: %w", err)
 	}
 
-	// Create pool directory structure
 	poolPath := filepath.Join(m.basePath, "pool", component)
 	if err := os.MkdirAll(poolPath, 0755); err != nil {
 		return fmt.Errorf("failed to create pool directory: %w", err)
 	}
 
-	// Download each package
 	for _, packageName := range packages {
 		if err := m.downloadPackageByName(packageName, component, arch); err != nil {
 			if m.config.Verbose {
@@ -336,39 +294,38 @@ func (m *Mirror) downloadPackagesForArch(suite, component, arch string) error {
 	return nil
 }
 
-// downloadPackageByName downloads a package by name using Repository functionality
 func (m *Mirror) downloadPackageByName(packageName, component, arch string) error {
-	firstLetter := string(packageName[0])
-	if strings.HasPrefix(packageName, "lib") && len(packageName) > 3 {
-		firstLetter = packageName[:4] // lib packages use first 4 characters
+	pkg := &Package{
+		Name:         packageName,
+		Architecture: arch,
+		Source:       packageName, // Default to package name - will be corrected with metadata later
+		Filename:     fmt.Sprintf("%s_%s.deb", packageName, arch),
 	}
 
-	packageDir := filepath.Join(m.basePath, "pool", component, firstLetter, packageName)
+	firstLetter := string(pkg.Source[0])
+	if strings.HasPrefix(pkg.Source, "lib") && len(pkg.Source) > 3 {
+		firstLetter = pkg.Source[:4] // lib packages use first 4 characters
+	}
+
+	packageDir := filepath.Join(m.basePath, "pool", component, firstLetter, pkg.Source)
 	if err := os.MkdirAll(packageDir, 0755); err != nil {
 		return fmt.Errorf("failed to create package directory: %w", err)
 	}
 
 	if m.config.Verbose {
-		fmt.Printf("Downloading package: %s\n", packageName)
+		fmt.Printf("Downloading package: %s (source: %s)\n", packageName, pkg.Source)
 	}
 
-	packageURL := fmt.Sprintf("%s/pool/%s/%s/%s", m.config.BaseURL, component, firstLetter, packageName)
-
-	pkg := &Package{
-		Name:         packageName,
-		Architecture: arch,
-		DownloadURL:  packageURL,
-		Filename:     fmt.Sprintf("%s_%s.deb", packageName, arch),
-	}
+	packageURL := fmt.Sprintf("%s/pool/%s/%s/%s", m.config.BaseURL, component, firstLetter, pkg.Source)
+	pkg.DownloadURL = packageURL
 
 	fmt.Printf("Downloading %s to %s\n", pkg.DownloadURL, packageDir)
 
 	return m.downloader.DownloadToDir(pkg, packageDir)
 }
 
-// GetMirrorInfo returns information about the current mirror
-func (m *Mirror) GetMirrorInfo() map[string]interface{} {
-	return map[string]interface{}{
+func (m *Mirror) GetMirrorInfo() map[string]any {
+	return map[string]any{
 		"base_url":          m.config.BaseURL,
 		"base_path":         m.basePath,
 		"suites":            m.config.Suites,
@@ -377,7 +334,6 @@ func (m *Mirror) GetMirrorInfo() map[string]interface{} {
 		"download_packages": m.config.DownloadPackages}
 }
 
-// EstimateMirrorSize estimates the total size of packages to download
 func (m *Mirror) EstimateMirrorSize() (int64, error) {
 	var totalSize int64
 
@@ -413,11 +369,9 @@ func (m *Mirror) EstimateMirrorSize() (int64, error) {
 	return totalSize, nil
 }
 
-// GetMirrorStatus returns the current status of the mirror
-func (m *Mirror) GetMirrorStatus() (map[string]interface{}, error) {
-	status := make(map[string]interface{})
+func (m *Mirror) GetMirrorStatus() (map[string]any, error) {
+	status := make(map[string]any)
 
-	// Check if base path exists
 	if _, err := os.Stat(m.basePath); os.IsNotExist(err) {
 		status["exists"] = false
 		status["initialized"] = false
@@ -427,7 +381,6 @@ func (m *Mirror) GetMirrorStatus() (map[string]interface{}, error) {
 	status["exists"] = true
 	status["base_path"] = m.basePath
 
-	// Count files and calculate total size
 	var fileCount int
 	var totalSize int64
 
@@ -453,12 +406,10 @@ func (m *Mirror) GetMirrorStatus() (map[string]interface{}, error) {
 	return status, nil
 }
 
-// GetRepositoryInfo returns the underlying repository information
 func (m *Mirror) GetRepositoryInfo() *Repository {
 	return m.repository
 }
 
-// UpdateConfiguration updates the mirror configuration and underlying repository
 func (m *Mirror) UpdateConfiguration(config MirrorConfig) error {
 	if err := config.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
@@ -466,7 +417,6 @@ func (m *Mirror) UpdateConfiguration(config MirrorConfig) error {
 
 	m.config = config
 
-	// Update repository configuration
 	m.repository.URL = config.BaseURL
 	if len(config.Suites) > 0 {
 		m.repository.SetDistribution(config.Suites[0])
@@ -477,16 +427,13 @@ func (m *Mirror) UpdateConfiguration(config MirrorConfig) error {
 	return nil
 }
 
-// VerifyMirrorIntegrity verifies the integrity of downloaded files using Repository
 func (m *Mirror) VerifyMirrorIntegrity(suite string) error {
 	if m.config.Verbose {
 		fmt.Printf("Verifying mirror integrity for suite: %s\n", suite)
 	}
 
-	// Update repository for this suite
 	m.repository.SetDistribution(suite)
 
-	// Fetch release file to get checksums
 	if err := m.repository.FetchReleaseFile(); err != nil {
 		return fmt.Errorf("failed to fetch release info for verification: %w", err)
 	}
@@ -496,13 +443,11 @@ func (m *Mirror) VerifyMirrorIntegrity(suite string) error {
 		return fmt.Errorf("no release information available for verification")
 	}
 
-	// Verify packages files against checksums
 	for _, component := range m.config.Components {
 		for _, arch := range m.config.Architectures {
 			filename := fmt.Sprintf("%s/binary-%s/Packages", component, arch)
 			packagesPath := filepath.Join(m.basePath, "dists", suite, component, fmt.Sprintf("binary-%s", arch), "Packages.gz")
 
-			// Check if compressed file exists and verify it
 			if _, err := os.Stat(packagesPath); err == nil {
 				if m.config.Verbose {
 					fmt.Printf("Verifying %s\n", filename)
