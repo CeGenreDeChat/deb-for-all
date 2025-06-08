@@ -111,26 +111,34 @@ func (r *Repository) SearchPackage(packageName string) ([]string, error) {
 		return nil, fmt.Errorf("aucun paquet disponible - appelez d'abord FetchPackages()")
 	}
 
-	var matches []string
 	packageNameLower := strings.ToLower(packageName)
 
-	for _, pkg := range r.Packages {
-		pkgLower := strings.ToLower(pkg)
+	var exactMatches []string
+	var partialMatches []string
 
+	for _, pkg := range r.Packages {
 		if pkg == packageName {
-			matches = append([]string{pkg}, matches...)
-		} else if pkgLower == packageNameLower {
-			matches = append([]string{pkg}, matches...)
-		} else if strings.Contains(pkgLower, packageNameLower) {
-			matches = append(matches, pkg) // partal match
+			exactMatches = append(exactMatches, pkg)
+		} else {
+			pkgLower := strings.ToLower(pkg)
+			if pkgLower == packageNameLower {
+				exactMatches = append(exactMatches, pkg)
+			} else if strings.Contains(pkgLower, packageNameLower) {
+				partialMatches = append(partialMatches, pkg)
+			}
 		}
 	}
 
-	if len(matches) == 0 {
+	if len(exactMatches) == 0 && len(partialMatches) == 0 {
 		return nil, fmt.Errorf("aucun paquet trouvé pour '%s' dans la distribution %s", packageName, r.Distribution)
 	}
 
-	return matches, nil
+	// Concatenate exact matches first, then partial matches
+	result := make([]string, 0, len(exactMatches)+len(partialMatches))
+	result = append(result, exactMatches...)
+	result = append(result, partialMatches...)
+
+	return result, nil
 }
 
 func (r *Repository) DownloadPackage(packageName, version, architecture, destDir string) error {
