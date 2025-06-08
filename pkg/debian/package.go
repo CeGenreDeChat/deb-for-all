@@ -17,6 +17,10 @@ type Package struct {
 	DownloadURL  string
 	Filename     string
 	Size         int64
+	Source       string
+	MD5sum       string
+	SHA1         string
+	SHA256       string
 }
 
 type SourcePackage struct {
@@ -47,6 +51,7 @@ func NewPackage(name, version, architecture, maintainer, description, downloadUR
 		DownloadURL:  downloadURL,
 		Filename:     filename,
 		Size:         size,
+		Source:       name,
 	}
 }
 
@@ -154,7 +159,6 @@ func (sp *SourcePackage) downloadFiles(destDir string, verbose bool, progressCal
 			return fmt.Errorf("erreur lors du téléchargement de %s: %v", file.Name, err)
 		}
 
-		// Vérifier les sommes de contrôle si disponibles
 		if file.SHA256Sum != "" {
 			if err := downloader.verifyChecksum(destPath, file.SHA256Sum, "sha256"); err != nil {
 				return fmt.Errorf("erreur de vérification SHA256 pour %s: %v", file.Name, err)
@@ -177,7 +181,12 @@ func (sp *SourcePackage) String() string {
 	return fmt.Sprintf("%s (%s) - %s [%d fichiers]", sp.Name, sp.Version, sp.Description, len(sp.Files))
 }
 
-// Package now only contains metadata - all download functionality moved to Downloader
+func (p *Package) GetSourceName() string {
+	if p.Source == "" {
+		return p.Name
+	}
+	return p.Source
+}
 
 func (p *Package) GetDownloadInfo() (*DownloadInfo, error) {
 	if p.DownloadURL == "" {
