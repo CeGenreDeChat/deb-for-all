@@ -16,15 +16,16 @@ import (
 )
 
 type Repository struct {
-	Name          string
-	URL           string
-	Description   string
-	Distribution  string
-	Sections      []string
-	Architectures []string
-	Packages      []string
-	ReleaseInfo   *ReleaseFile
-	VerifyRelease bool
+	Name            string
+	URL             string
+	Description     string
+	Distribution    string
+	Sections        []string
+	Architectures   []string
+	Packages        []string
+	PackageMetadata []Package // Complete package metadata parsed from Packages files
+	ReleaseInfo     *ReleaseFile
+	VerifyRelease   bool
 }
 
 func NewRepository(name, url, description, distribution string, sections, architectures []string) *Repository {
@@ -374,25 +375,101 @@ func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packages
 
 func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 	var packages []string
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	var packageMetadata []Package
 
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024) // Buffer 1MB
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	var currentPackage *Package
 
-		if strings.HasPrefix(line, "Package:") {
-			packageName := strings.TrimSpace(strings.TrimPrefix(line, "Package:"))
-			if packageName != "" {
-				packages = append(packages, packageName)
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmedLine := strings.TrimSpace(line)
+
+		// Empty line indicates end of current package block
+		if trimmedLine == "" {
+			if currentPackage != nil && currentPackage.Name != "" {
+				// Ensure source name is set (fallback to package name if not specified)
+				if currentPackage.Source == "" {
+					currentPackage.Source = currentPackage.Name
+				}
+
+				packageMetadata = append(packageMetadata, *currentPackage)
+				packages = append(packages, currentPackage.Name)
 			}
+			currentPackage = nil
+			continue
 		}
+
+		// Skip continuation lines (starting with space or tab)
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+
+		// Parse field: value pairs
+		parts := strings.SplitN(trimmedLine, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		field := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		// Start new package block
+		if field == "Package" {
+			currentPackage = &Package{
+				Name: value,
+			}
+			continue
+		}
+
+		// Skip if no current package
+		if currentPackage == nil {
+			continue
+		}
+
+		// Parse fields
+		switch field {
+		case "Version":
+			currentPackage.Version = value
+		case "Architecture":
+			currentPackage.Architecture = value
+		case "Filename":
+			currentPackage.Filename = value
+			// Construct download URL from repository base URL and filename
+			baseURL := strings.TrimSuffix(r.URL, "/")
+			currentPackage.DownloadURL = fmt.Sprintf("%s/%s", baseURL, value)
+		case "Size":
+			if size, err := strconv.ParseInt(value, 10, 64); err == nil {
+				currentPackage.Size = size
+			}
+		case "Source":
+			currentPackage.Source = value
+		case "MD5sum":
+			currentPackage.MD5sum = value
+		case "SHA1":
+			currentPackage.SHA1 = value
+		case "SHA256":
+			currentPackage.SHA256 = value
+		}
+	}
+
+	// Handle last package if file doesn't end with empty line
+	if currentPackage != nil && currentPackage.Name != "" {
+		if currentPackage.Source == "" {
+			currentPackage.Source = currentPackage.Name
+		}
+		packageMetadata = append(packageMetadata, *currentPackage)
+		packages = append(packages, currentPackage.Name)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages: %v", err)
 	}
+
+	// Store metadata in repository
+	r.PackageMetadata = packageMetadata
 
 	return packages, nil
 }
@@ -431,6 +508,26 @@ func (r *Repository) AddSection(section string) {
 
 func (r *Repository) AddArchitecture(architecture string) {
 	r.Architectures = append(r.Architectures, architecture)
+}
+
+// GetPackageMetadata returns the complete metadata for a specific package
+func (r *Repository) GetPackageMetadata(packageName string) (*Package, error) {
+	if len(r.PackageMetadata) == 0 {
+		return nil, fmt.Errorf("aucune métadonnée de paquet disponible - appelez d'abord FetchPackages()")
+	}
+
+	for _, pkg := range r.PackageMetadata {
+		if pkg.Name == packageName {
+			return &pkg, nil
+		}
+	}
+
+	return nil, fmt.Errorf("paquet '%s' non trouvé dans les métadonnées", packageName)
+}
+
+// GetAllPackageMetadata returns all package metadata
+func (r *Repository) GetAllPackageMetadata() []Package {
+	return r.PackageMetadata
 }
 
 type PackageInfo struct {

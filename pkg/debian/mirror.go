@@ -210,6 +210,11 @@ func (m *Mirror) mirrorArchitecture(suite, component, arch string) error {
 		return fmt.Errorf("failed to download Packages file: %w", err)
 	}
 
+	// Always load package metadata, even if not downloading packages
+	if err := m.loadPackageMetadata(suite, component); err != nil {
+		return fmt.Errorf("failed to load package metadata: %w", err)
+	}
+
 	if m.config.DownloadPackages {
 		if err := m.downloadPackagesForArch(suite, component, arch); err != nil {
 			return fmt.Errorf("failed to download packages: %w", err)
@@ -295,31 +300,59 @@ func (m *Mirror) downloadPackagesForArch(suite, component, arch string) error {
 }
 
 func (m *Mirror) downloadPackageByName(packageName, component, arch string) error {
-	pkg := &Package{
-		Name:         packageName,
-		Architecture: arch,
-		Source:       packageName, // Default to package name - will be corrected with metadata later
-		Filename:     fmt.Sprintf("%s_%s.deb", packageName, arch),
+	// Try to get actual package metadata from repository
+	var pkg *Package
+
+	// First attempt to get metadata from repository
+	if m.repository != nil {
+		if packageMetadata, err := m.repository.GetPackageMetadata(packageName); err == nil {
+			// Use actual metadata from repository
+			pkg = packageMetadata
+			if m.config.Verbose {
+				fmt.Printf("Using repository metadata for package: %s (source: %s)\n", packageName, pkg.GetSourceName())
+			}
+		}
 	}
 
-	firstLetter := string(pkg.Source[0])
-	if strings.HasPrefix(pkg.Source, "lib") && len(pkg.Source) > 3 {
-		firstLetter = pkg.Source[:4] // lib packages use first 4 characters
+	// Fallback to creating package object if no metadata available
+	if pkg == nil {
+		pkg = &Package{
+			Name:         packageName,
+			Architecture: arch,
+			Source:       packageName, // Default to package name
+			Filename:     fmt.Sprintf("%s_%s.deb", packageName, arch),
+		}
+		if m.config.Verbose {
+			fmt.Printf("No metadata available, using fallback for package: %s\n", packageName)
+		}
 	}
 
-	packageDir := filepath.Join(m.basePath, "pool", component, firstLetter, pkg.Source)
+	// Use source name for directory structure
+	sourceName := pkg.GetSourceName()
+	firstLetter := string(sourceName[0])
+	if strings.HasPrefix(sourceName, "lib") && len(sourceName) > 3 {
+		firstLetter = sourceName[:4] // lib packages use first 4 characters
+	}
+
+	packageDir := filepath.Join(m.basePath, "pool", component, firstLetter, sourceName)
 	if err := os.MkdirAll(packageDir, 0755); err != nil {
 		return fmt.Errorf("failed to create package directory: %w", err)
 	}
 
 	if m.config.Verbose {
-		fmt.Printf("Downloading package: %s (source: %s)\n", packageName, pkg.Source)
+		fmt.Printf("Downloading package: %s (source: %s) to directory: %s\n", packageName, sourceName, packageDir)
 	}
 
-	packageURL := fmt.Sprintf("%s/pool/%s/%s/%s", m.config.BaseURL, component, firstLetter, pkg.Source)
-	pkg.DownloadURL = packageURL
+	// Use download URL from metadata if available, otherwise construct it
+	var packageURL string
+	if pkg.DownloadURL != "" {
+		packageURL = pkg.DownloadURL
+	} else {
+		packageURL = fmt.Sprintf("%s/pool/%s/%s/%s/%s", m.config.BaseURL, component, firstLetter, sourceName, pkg.Filename)
+		pkg.DownloadURL = packageURL
+	}
 
-	fmt.Printf("Downloading %s to %s\n", pkg.DownloadURL, packageDir)
+	fmt.Printf("Downloading %s to %s\n", packageURL, packageDir)
 
 	return m.downloader.DownloadToDir(pkg, packageDir)
 }
@@ -459,6 +492,23 @@ func (m *Mirror) VerifyMirrorIntegrity(suite string) error {
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+// loadPackageMetadata loads package metadata without downloading actual packages
+func (m *Mirror) loadPackageMetadata(suite, component string) error {
+	if m.config.Verbose {
+		fmt.Printf("Loading package metadata for %s/%s\n", suite, component)
+	}
+
+	m.repository.SetDistribution(suite)
+	m.repository.SetSections([]string{component})
+
+	_, err := m.repository.FetchPackages()
+	if err != nil {
+		return fmt.Errorf("failed to fetch package metadata: %w", err)
 	}
 
 	return nil
