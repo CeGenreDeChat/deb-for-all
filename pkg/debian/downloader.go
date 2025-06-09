@@ -249,6 +249,8 @@ func (d *Downloader) DownloadMultiple(packages []*Package, destDir string, maxCo
 
 	for w := 0; w < maxConcurrent; w++ {
 		go func() {
+			// each goroutine processes jobs from the jobs channel
+			// when one Go routine is occupied, another one can take the next job
 			for job := range jobs {
 				err := d.DownloadWithProgress(job.pkg, job.destPath, nil)
 				results <- downloadResult{pkg: job.pkg, err: err}

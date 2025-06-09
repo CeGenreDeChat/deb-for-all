@@ -9,18 +9,71 @@ import (
 )
 
 type Package struct {
-	Name         string
+	// Required fields (package identification)
+	Name         string // Nom du paquet (alias pour Package)
+	Package      string // Nom du paquet (champ officiel Debian)
 	Version      string
 	Architecture string
 	Maintainer   string
 	Description  string
-	DownloadURL  string
-	Filename     string
-	Size         int64
-	Source       string
-	MD5sum       string
-	SHA1         string
-	SHA256       string
+
+	// Download and file information
+	DownloadURL string // URL de téléchargement
+	Filename    string // Nom du fichier .deb
+	Size        int64  // Taille du paquet en bytes
+	MD5sum      string // Somme de contrôle MD5
+	SHA1        string // Somme de contrôle SHA1
+	SHA256      string // Somme de contrôle SHA256
+
+	// Optional fields
+	Source        string
+	Section       string
+	Priority      string
+	Essential     string
+	Depends       []string
+	PreDepends    []string
+	Recommends    []string
+	Suggests      []string
+	Enhances      []string
+	Breaks        []string
+	Conflicts     []string
+	Provides      []string
+	Replaces      []string
+	InstalledSize string
+	Homepage      string
+	BuiltUsing    string
+	PackageType   string
+
+	// Additional Debian package fields
+	Tag                  string // Debtags information
+	Task                 string // Task information
+	Uploaders            string // Additional uploaders
+	StandardsVersion     string // Standards version
+	VcsGit               string // Version control system git URL
+	VcsBrowser           string // Version control browser URL
+	Testsuite            string // Test suite information
+	AutoBuilt            string // Auto-built information
+	BuildEssential       string // Build essential flag
+	ImportantDescription string // Important description
+	DescriptionMd5       string // Description MD5 hash
+	Gstreamer            string // GStreamer information
+	PythonVersion        string // Python version information
+
+	// Maintainer script fields
+	Preinst  string
+	Postinst string
+	Prerm    string
+	Postrm   string
+
+	// Multi-arch support
+	MultiArch string
+
+	// Origin and distribution
+	Origin string
+	Bugs   string
+
+	// Custom fields (X- prefixed)
+	CustomFields map[string]string
 }
 
 type SourcePackage struct {
@@ -44,6 +97,7 @@ type SourceFile struct {
 func NewPackage(name, version, architecture, maintainer, description, downloadURL, filename string, size int64) *Package {
 	return &Package{
 		Name:         name,
+		Package:      name, // Ensure both fields are set
 		Version:      version,
 		Architecture: architecture,
 		Maintainer:   maintainer,
@@ -138,6 +192,7 @@ func (sp *SourcePackage) downloadFiles(destDir string, verbose bool, progressCal
 		// Créer un paquet temporaire pour utiliser le downloader existant
 		tempPkg := &Package{
 			Name:        sp.Name,
+			Package:     sp.Name, // Ensure both fields are set
 			Version:     sp.Version,
 			DownloadURL: file.URL,
 			Filename:    file.Name,

@@ -419,7 +419,8 @@ func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 		// Start new package block
 		if field == "Package" {
 			currentPackage = &Package{
-				Name: value,
+				Name:    value, // For compatibility
+				Package: value, // Official Debian field name
 			}
 			continue
 		}
@@ -435,6 +436,10 @@ func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 			currentPackage.Version = value
 		case "Architecture":
 			currentPackage.Architecture = value
+		case "Maintainer":
+			currentPackage.Maintainer = value
+		case "Description":
+			currentPackage.Description = value
 		case "Filename":
 			currentPackage.Filename = value
 			// Construct download URL from repository base URL and filename
@@ -452,6 +457,89 @@ func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 			currentPackage.SHA1 = value
 		case "SHA256":
 			currentPackage.SHA256 = value
+		// Nouveaux champs ajoutés
+		case "Section":
+			currentPackage.Section = value
+		case "Priority":
+			currentPackage.Priority = value
+		case "Essential":
+			currentPackage.Essential = value
+		case "Depends":
+			currentPackage.Depends = parsePackageList(value)
+		case "Pre-Depends":
+			currentPackage.PreDepends = parsePackageList(value)
+		case "Recommends":
+			currentPackage.Recommends = parsePackageList(value)
+		case "Suggests":
+			currentPackage.Suggests = parsePackageList(value)
+		case "Enhances":
+			currentPackage.Enhances = parsePackageList(value)
+		case "Breaks":
+			currentPackage.Breaks = parsePackageList(value)
+		case "Conflicts":
+			currentPackage.Conflicts = parsePackageList(value)
+		case "Provides":
+			currentPackage.Provides = parsePackageList(value)
+		case "Replaces":
+			currentPackage.Replaces = parsePackageList(value)
+		case "Installed-Size":
+			currentPackage.InstalledSize = value
+		case "Homepage":
+			currentPackage.Homepage = value
+		case "Built-Using":
+			currentPackage.BuiltUsing = value
+		case "Package-Type":
+			currentPackage.PackageType = value
+		case "Multi-Arch":
+			currentPackage.MultiArch = value
+		case "Origin":
+			currentPackage.Origin = value
+		case "Bugs":
+			currentPackage.Bugs = value
+		// Additional Debian package fields
+		case "Tag":
+			currentPackage.Tag = value
+		case "Task":
+			currentPackage.Task = value
+		case "Uploaders":
+			currentPackage.Uploaders = value
+		case "Standards-Version":
+			currentPackage.StandardsVersion = value
+		case "Vcs-Git":
+			currentPackage.VcsGit = value
+		case "Vcs-Browser":
+			currentPackage.VcsBrowser = value
+		case "Testsuite":
+			currentPackage.Testsuite = value
+		case "Auto-Built":
+			currentPackage.AutoBuilt = value
+		case "Build-Essential":
+			currentPackage.BuildEssential = value
+		case "Important":
+			currentPackage.ImportantDescription = value
+		case "Description-md5":
+			currentPackage.DescriptionMd5 = value
+		case "Gstreamer-Version":
+			currentPackage.Gstreamer = value
+		case "Python-Version":
+			currentPackage.PythonVersion = value
+		// Maintainer script fields
+		case "Preinst":
+			currentPackage.Preinst = value
+		case "Postinst":
+			currentPackage.Postinst = value
+		case "Prerm":
+			currentPackage.Prerm = value
+		case "Postrm":
+			currentPackage.Postrm = value
+		// Custom fields (X- prefixed)
+		default:
+			if strings.HasPrefix(field, "X-") {
+				if currentPackage.CustomFields == nil {
+					currentPackage.CustomFields = make(map[string]string)
+				}
+				currentPackage.CustomFields[field] = value
+			}
 		}
 	}
 
