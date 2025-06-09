@@ -1,6 +1,7 @@
 package debian
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,20 +11,20 @@ import (
 
 type Package struct {
 	// Required fields (package identification)
-	Name         string // Nom du paquet (alias pour Package)
-	Package      string // Nom du paquet (champ officiel Debian)
+	Name         string
+	Package      string
 	Version      string
 	Architecture string
 	Maintainer   string
 	Description  string
 
 	// Download and file information
-	DownloadURL string // URL de téléchargement
-	Filename    string // Nom du fichier .deb
-	Size        int64  // Taille du paquet en bytes
-	MD5sum      string // Somme de contrôle MD5
-	SHA1        string // Somme de contrôle SHA1
-	SHA256      string // Somme de contrôle SHA256
+	DownloadURL string
+	Filename    string
+	Size        int64
+	MD5sum      string
+	SHA1        string
+	SHA256      string
 
 	// Optional fields
 	Source        string
@@ -45,19 +46,19 @@ type Package struct {
 	PackageType   string
 
 	// Additional Debian package fields
-	Tag                  string // Debtags information
-	Task                 string // Task information
-	Uploaders            string // Additional uploaders
-	StandardsVersion     string // Standards version
-	VcsGit               string // Version control system git URL
-	VcsBrowser           string // Version control browser URL
-	Testsuite            string // Test suite information
-	AutoBuilt            string // Auto-built information
-	BuildEssential       string // Build essential flag
-	ImportantDescription string // Important description
-	DescriptionMd5       string // Description MD5 hash
-	Gstreamer            string // GStreamer information
-	PythonVersion        string // Python version information
+	Tag                  string
+	Task                 string
+	Uploaders            string
+	StandardsVersion     string
+	VcsGit               string
+	VcsBrowser           string
+	Testsuite            string
+	AutoBuilt            string
+	BuildEssential       string
+	ImportantDescription string
+	DescriptionMd5       string
+	Gstreamer            string
+	PythonVersion        string
 
 	// Maintainer script fields
 	Preinst  string
@@ -189,7 +190,6 @@ func (sp *SourcePackage) downloadFiles(destDir string, verbose bool, progressCal
 			fmt.Printf("Téléchargement de %s...\n", file.Name)
 		}
 
-		// Créer un paquet temporaire pour utiliser le downloader existant
 		tempPkg := &Package{
 			Name:        sp.Name,
 			Package:     sp.Name, // Ensure both fields are set
@@ -266,6 +266,241 @@ func (p *Package) GetDownloadInfo() (*DownloadInfo, error) {
 	}
 
 	return info, nil
+}
+
+func ReadControlFile(filePath string) (*Package, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseControlData(string(data))
+}
+
+func (p *Package) WriteControlFile(filePath string) error {
+	content := p.FormatAsControl()
+	return os.WriteFile(filePath, []byte(content), 0644)
+}
+
+func (p *Package) FormatAsControl() string {
+	var sb strings.Builder
+
+	requiredFields := []struct {
+		name  string
+		value string
+	}{
+		{"Package", p.Package},
+		{"Version", p.Version},
+		{"Architecture", p.Architecture},
+		{"Maintainer", p.Maintainer},
+	}
+
+	for _, field := range requiredFields {
+		sb.WriteString(field.name + ": " + field.value + "\n")
+	}
+
+	optionalFields := []struct {
+		name  string
+		value string
+	}{
+		{"Source", p.Source},
+		{"Section", p.Section},
+		{"Priority", p.Priority},
+		{"Essential", p.Essential},
+		{"Installed-Size", p.InstalledSize},
+		{"Homepage", p.Homepage},
+		{"Built-Using", p.BuiltUsing},
+		{"Package-Type", p.PackageType},
+		{"Multi-Arch", p.MultiArch},
+		{"Origin", p.Origin},
+		{"Bugs", p.Bugs},
+		{"Preinst", p.Preinst},
+		{"Postinst", p.Postinst},
+		{"Prerm", p.Prerm},
+		{"Postrm", p.Postrm},
+		{"Tag", p.Tag},
+		{"Task", p.Task},
+		{"Uploaders", p.Uploaders},
+		{"Standards-Version", p.StandardsVersion},
+		{"Vcs-Git", p.VcsGit},
+		{"Vcs-Browser", p.VcsBrowser},
+		{"Testsuite", p.Testsuite},
+		{"Auto-Built", p.AutoBuilt},
+		{"Build-Essential", p.BuildEssential},
+		{"Important", p.ImportantDescription},
+		{"Description-md5", p.DescriptionMd5},
+		{"Gstreamer-Version", p.Gstreamer},
+		{"Python-Version", p.PythonVersion},
+	}
+
+	for _, field := range optionalFields {
+		if field.value != "" {
+			sb.WriteString(field.name + ": " + field.value + "\n")
+		}
+	}
+
+	relationshipFields := []struct {
+		name  string
+		value []string
+	}{
+		{"Depends", p.Depends},
+		{"Pre-Depends", p.PreDepends},
+		{"Recommends", p.Recommends},
+		{"Suggests", p.Suggests},
+		{"Enhances", p.Enhances},
+		{"Breaks", p.Breaks},
+		{"Conflicts", p.Conflicts},
+		{"Provides", p.Provides},
+		{"Replaces", p.Replaces},
+	}
+
+	for _, field := range relationshipFields {
+		if len(field.value) > 0 {
+			sb.WriteString(field.name + ": " + strings.Join(field.value, ", ") + "\n")
+		}
+	}
+
+	if p.CustomFields != nil {
+		for field, value := range p.CustomFields {
+			sb.WriteString(field + ": " + value + "\n")
+		}
+	}
+
+	if p.Description != "" {
+		sb.WriteString("Description: " + p.Description + "\n")
+	}
+
+	return sb.String()
+}
+
+func parseControlData(content string) (*Package, error) {
+	lines := strings.Split(content, "\n")
+	pkg := &Package{
+		CustomFields: make(map[string]string),
+	}
+
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		colonIndex := strings.Index(line, ":")
+		if colonIndex == -1 {
+			continue
+		}
+
+		field := strings.TrimSpace(line[:colonIndex])
+		value := strings.TrimSpace(line[colonIndex+1:])
+
+		switch strings.ToLower(field) {
+		case "package":
+			pkg.Package = value
+			pkg.Name = value // For compatibility
+		case "version":
+			pkg.Version = value
+		case "architecture":
+			pkg.Architecture = value
+		case "maintainer":
+			pkg.Maintainer = value
+		case "description":
+			pkg.Description = value
+		case "source":
+			pkg.Source = value
+		case "section":
+			pkg.Section = value
+		case "priority":
+			pkg.Priority = value
+		case "essential":
+			pkg.Essential = value
+		case "depends":
+			pkg.Depends = parsePackageList(value)
+		case "pre-depends":
+			pkg.PreDepends = parsePackageList(value)
+		case "recommends":
+			pkg.Recommends = parsePackageList(value)
+		case "suggests":
+			pkg.Suggests = parsePackageList(value)
+		case "enhances":
+			pkg.Enhances = parsePackageList(value)
+		case "breaks":
+			pkg.Breaks = parsePackageList(value)
+		case "conflicts":
+			pkg.Conflicts = parsePackageList(value)
+		case "provides":
+			pkg.Provides = parsePackageList(value)
+		case "replaces":
+			pkg.Replaces = parsePackageList(value)
+		case "installed-size":
+			pkg.InstalledSize = value
+		case "homepage":
+			pkg.Homepage = value
+		case "built-using":
+			pkg.BuiltUsing = value
+		case "package-type":
+			pkg.PackageType = value
+		case "multi-arch":
+			pkg.MultiArch = value
+		case "origin":
+			pkg.Origin = value
+		case "bugs":
+			pkg.Bugs = value
+		case "preinst":
+			pkg.Preinst = value
+		case "postinst":
+			pkg.Postinst = value
+		case "prerm":
+			pkg.Prerm = value
+		case "postrm":
+			pkg.Postrm = value
+		case "tag":
+			pkg.Tag = value
+		case "task":
+			pkg.Task = value
+		case "uploaders":
+			pkg.Uploaders = value
+		case "standards-version":
+			pkg.StandardsVersion = value
+		case "vcs-git":
+			pkg.VcsGit = value
+		case "vcs-browser":
+			pkg.VcsBrowser = value
+		case "testsuite":
+			pkg.Testsuite = value
+		case "auto-built":
+			pkg.AutoBuilt = value
+		case "build-essential":
+			pkg.BuildEssential = value
+		case "important":
+			pkg.ImportantDescription = value
+		case "description-md5":
+			pkg.DescriptionMd5 = value
+		case "gstreamer-version":
+			pkg.Gstreamer = value
+		case "python-version":
+			pkg.PythonVersion = value
+		default:
+			// Handle custom fields (X- prefixed or unknown fields)
+			pkg.CustomFields[field] = value
+		}
+	}
+
+	if pkg.Package == "" || pkg.Version == "" || pkg.Architecture == "" || pkg.Maintainer == "" {
+		return nil, errors.New("invalid control file: missing required fields (Package, Version, Architecture, Maintainer)")
+	}
+
+	return pkg, nil
+}
+
+func parsePackageList(value string) []string {
+	if value == "" {
+		return nil
+	}
+
+	packages := strings.Split(value, ",")
+	for i := range packages {
+		packages[i] = strings.TrimSpace(packages[i])
+	}
+	return packages
 }
 
 type DownloadInfo struct {
