@@ -24,6 +24,9 @@ profile.cov
 go.work
 go.work.sum
 
+# RobotFramework specific
+./test/results
+
 # env file
 .env
 

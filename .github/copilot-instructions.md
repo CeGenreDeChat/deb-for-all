@@ -41,6 +41,42 @@ This phrase, or the phrase "NOT RECOMMENDED" mean that there may exist valid rea
 * A pre-release version MAY be denoted by appending a hyphen and a series of dot separated identifiers immediately following the patch version. Identifiers MUST comprise only ASCII alphanumerics and hyphens [0-9A-Za-z-]. Identifiers MUST NOT be empty. Numeric identifiers MUST NOT include leading zeroes. Pre-release versions have a lower precedence than the associated normal version. A pre-release version indicates that the version is unstable and might not satisfy the intended compatibility requirements as denoted by its associated normal version. Examples: 1.0.0-alpha, 1.0.0-alpha.1, 1.0.0-0.3.7, 1.0.0-x.7.z.92, 1.0.0-x-y-z.--.
 * Build metadata MAY be denoted by appending a plus sign and a series of dot separated identifiers immediately following the patch or pre-release version. Identifiers MUST comprise only ASCII alphanumerics and hyphens [0-9A-Za-z-]. Identifiers MUST NOT be empty. Build metadata MUST be ignored when determining version precedence. Thus two versions that differ only in the build metadata, have the same precedence. Examples: 1.0.0-alpha+001, 1.0.0+20130313144700, 1.0.0-beta+exp.sha.5114f85, 1.0.0+21AF26D3----117B344092BD.
 
+# Instructions for Writing Robot Framework Test Files
+
+## File Structure
+
+1. **Clear Sections**: Ensure each test file is divided into well-defined sections: `Settings`, `Variables`, `Test Cases`, and `Keywords`.
+
+2. **Documentation**:
+   - **Test Suite**: Include general documentation for each test suite in the `Settings` section.
+   - **Test Cases**: Each test case should have detailed documentation describing its purpose.
+   - **Keywords**: Document each custom keyword to explain its purpose and functionality.
+
+## Best Practices
+
+1. **Descriptive Names**:
+   - Use clear and descriptive names for test suites, test cases, and keywords.
+
+2. **Use of Tags**:
+   - Apply tags to test cases to facilitate selective test execution.
+
+3. **Variables**:
+   - Define and use variables for reusable values.
+   - Avoid hard-coded values in test cases.
+
+4. **Reusable Keywords**:
+   - Create reusable keywords for common actions.
+   - Use keyword libraries to extend functionality.
+
+5. **Test Data Management**:
+   - Separate test data from test cases using resource files or variable sections.
+
+6. **File Organization**:
+   - Structure your test files logically and maintain a clear folder hierarchy.
+
+7. **How to Write Tests**:
+   - The '[Return]' setting is deprecated. Use the 'RETURN' statement instead.
+   - Separate Parameters and Values with Spaces.
 
 # Project Goal
 The aim of this project is to create a library for managing Debian packages within another Go project, and also to provide a binary for doing the same thing.
