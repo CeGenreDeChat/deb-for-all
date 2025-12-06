@@ -10,9 +10,22 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
+// Download configuration constants.
+const (
+	defaultUserAgent     = "deb-for-all/1.0"
+	defaultTimeout       = 30 * time.Second
+	defaultRetryAttempts = 3
+	defaultConcurrency   = 5
+	retryDelay           = 2 * time.Second
+	downloadBufferSize   = 32 * 1024 // 32KB buffer
+)
+
+// Downloader handles HTTP downloads with retry logic, progress tracking,
+// and checksum verification for Debian packages.
 type Downloader struct {
 	UserAgent       string
 	Timeout         time.Duration
@@ -20,45 +33,37 @@ type Downloader struct {
 	VerifyChecksums bool
 }
 
+// NewDownloader creates a new Downloader with default settings.
 func NewDownloader() *Downloader {
 	return &Downloader{
-		UserAgent:       "deb-for-all/1.0",
-		Timeout:         30 * time.Second,
-		RetryAttempts:   3,
+		UserAgent:       defaultUserAgent,
+		Timeout:         defaultTimeout,
+		RetryAttempts:   defaultRetryAttempts,
 		VerifyChecksums: true,
 	}
 }
 
-func (d *Downloader) DownloadWithProgress(pkg *Package, destPath string, progressCallback func(downloaded, total int64)) error {
-	var err error
-	var req *http.Request
+// newHTTPClient creates a new HTTP client with the configured timeout.
+func (d *Downloader) newHTTPClient() *http.Client {
+	return &http.Client{Timeout: d.Timeout}
+}
 
-	if pkg.DownloadURL == "" {
-		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", pkg.Name)
-	}
-
-	dir := filepath.Dir(destPath)
-	if err = os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire parent: %v", err)
-	}
-
-	client := &http.Client{
-		Timeout: d.Timeout,
-	}
-	var resp *http.Response
+// doRequestWithRetry performs an HTTP request with retry logic.
+// Returns the response and any error encountered.
+func (d *Downloader) doRequestWithRetry(url string, silent bool) (*http.Response, error) {
+	client := d.newHTTPClient()
 	var lastErr error
 
 	for attempt := 1; attempt <= d.RetryAttempts; attempt++ {
-		req, err = http.NewRequest("GET", pkg.DownloadURL, nil)
+		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
-			return fmt.Errorf("erreur lors de la création de la requête: %v", err)
+			return nil, fmt.Errorf("erreur lors de la création de la requête: %w", err)
 		}
-
 		req.Header.Set("User-Agent", d.UserAgent)
 
-		resp, err = client.Do(req)
+		resp, err := client.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
-			break
+			return resp, nil
 		}
 
 		if err != nil {
@@ -69,139 +74,117 @@ func (d *Downloader) DownloadWithProgress(pkg *Package, destPath string, progres
 
 		if resp != nil {
 			resp.Body.Close()
-			resp = nil
 		}
 
 		if attempt < d.RetryAttempts {
-			fmt.Printf("Tentative %d échouée, nouvelle tentative dans 2 secondes...\n", attempt)
-			time.Sleep(2 * time.Second)
+			if !silent {
+				fmt.Printf("Tentative %d échouée, nouvelle tentative dans %v...\n", attempt, retryDelay)
+			}
+			time.Sleep(retryDelay)
 		}
 	}
 
-	if resp == nil || resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("erreur lors du téléchargement après %d tentatives: %v", d.RetryAttempts, lastErr)
+	return nil, fmt.Errorf("erreur lors du téléchargement après %d tentatives: %w", d.RetryAttempts, lastErr)
+}
+
+// getPackageFilename returns the filename for a package, generating one if not set.
+func getPackageFilename(pkg *Package) string {
+	if pkg.Filename != "" {
+		return pkg.Filename
+	}
+	return fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
+}
+
+// downloadToFile performs the actual download to a file with optional progress callback.
+func (d *Downloader) downloadToFile(url, destPath string, progressCallback func(downloaded, total int64)) error {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire parent: %w", err)
+	}
+
+	resp, err := d.doRequestWithRetry(url, progressCallback == nil)
+	if err != nil {
+		return err
 	}
 	defer resp.Body.Close()
 
-	var destFile *os.File
-
-	destFile, err = os.Create(destPath)
+	destFile, err := os.Create(destPath)
 	if err != nil {
-		return fmt.Errorf("impossible de créer le fichier de destination: %v", err)
+		return fmt.Errorf("impossible de créer le fichier de destination: %w", err)
 	}
 	defer destFile.Close()
 
-	totalSize := resp.ContentLength
-	var downloaded int64
-	var n int
+	if progressCallback == nil {
+		_, err = io.Copy(destFile, resp.Body)
+		if err != nil {
+			return fmt.Errorf("erreur lors de la copie du fichier: %w", err)
+		}
+		return nil
+	}
 
-	buffer := make([]byte, 32*1024) // Buffer 32KB
+	return d.copyWithProgress(resp.Body, destFile, resp.ContentLength, progressCallback)
+}
+
+// copyWithProgress copies data from src to dst while reporting progress.
+func (d *Downloader) copyWithProgress(src io.Reader, dst io.Writer, totalSize int64, callback func(downloaded, total int64)) error {
+	buffer := make([]byte, downloadBufferSize)
+	var downloaded int64
+
 	for {
-		n, err = resp.Body.Read(buffer)
+		n, err := src.Read(buffer)
 		if n > 0 {
-			_, writeErr := destFile.Write(buffer[:n])
-			if writeErr != nil {
-				return fmt.Errorf("erreur lors de l'écriture: %v", writeErr)
+			if _, writeErr := dst.Write(buffer[:n]); writeErr != nil {
+				return fmt.Errorf("erreur lors de l'écriture: %w", writeErr)
 			}
 			downloaded += int64(n)
-			if progressCallback != nil {
-				progressCallback(downloaded, totalSize)
-			}
+			callback(downloaded, totalSize)
 		}
 		if err == io.EOF {
-			break
+			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("erreur lors de la lecture: %v", err)
+			return fmt.Errorf("erreur lors de la lecture: %w", err)
 		}
+	}
+}
+
+// DownloadWithProgress downloads a package to the specified path with progress reporting.
+func (d *Downloader) DownloadWithProgress(pkg *Package, destPath string, progressCallback func(downloaded, total int64)) error {
+	if pkg.DownloadURL == "" {
+		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", pkg.Name)
+	}
+
+	if err := d.downloadToFile(pkg.DownloadURL, destPath, progressCallback); err != nil {
+		return err
 	}
 
 	fmt.Printf("Paquet %s téléchargé avec succès vers %s\n", pkg.Name, destPath)
 	return nil
 }
 
+// DownloadSilent downloads a package without any output.
 func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error {
 	if pkg.DownloadURL == "" {
 		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", pkg.Name)
 	}
-
-	dir := filepath.Dir(destPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire parent: %v", err)
-	}
-
-	client := &http.Client{
-		Timeout: d.Timeout,
-	}
-
-	var resp *http.Response
-	var lastErr error
-
-	for attempt := 1; attempt <= d.RetryAttempts; attempt++ {
-		req, err := http.NewRequest("GET", pkg.DownloadURL, nil)
-		if err != nil {
-			return fmt.Errorf("erreur lors de la création de la requête: %v", err)
-		}
-
-		req.Header.Set("User-Agent", d.UserAgent)
-
-		resp, err = client.Do(req)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			break
-		}
-
-		if err != nil {
-			lastErr = err
-		} else {
-			lastErr = fmt.Errorf("statut HTTP %d", resp.StatusCode)
-		}
-
-		if resp != nil {
-			resp.Body.Close()
-			resp = nil
-		}
-
-		if attempt < d.RetryAttempts {
-			time.Sleep(2 * time.Second)
-		}
-	}
-
-	if resp == nil || resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("erreur lors du téléchargement après %d tentatives: %v", d.RetryAttempts, lastErr)
-	}
-	defer resp.Body.Close()
-
-	destFile, err := os.Create(destPath)
-	if err != nil {
-		return fmt.Errorf("impossible de créer le fichier de destination: %v", err)
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, resp.Body)
-	if err != nil {
-		return fmt.Errorf("erreur lors de la copie du fichier: %v", err)
-	}
-
-	return nil
+	return d.downloadToFile(pkg.DownloadURL, destPath, nil)
 }
 
+// DownloadWithChecksum downloads a package and verifies its checksum.
 func (d *Downloader) DownloadWithChecksum(pkg *Package, destPath, checksum, checksumType string) error {
-	err := d.DownloadWithProgress(pkg, destPath, nil)
-	if err != nil {
+	if err := d.DownloadWithProgress(pkg, destPath, nil); err != nil {
 		return err
 	}
 
 	if d.VerifyChecksums && checksum != "" {
 		return d.verifyChecksum(destPath, checksum, checksumType)
 	}
-
 	return nil
 }
 
 func (d *Downloader) verifyChecksum(filePath, expectedChecksum, checksumType string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("impossible d'ouvrir le fichier pour vérification: %v", err)
+		return fmt.Errorf("impossible d'ouvrir le fichier pour vérification: %w", err)
 	}
 	defer file.Close()
 
@@ -215,9 +198,8 @@ func (d *Downloader) verifyChecksum(filePath, expectedChecksum, checksumType str
 		return fmt.Errorf("type de somme de contrôle non supporté: %s", checksumType)
 	}
 
-	_, err = io.Copy(hasher, file)
-	if err != nil {
-		return fmt.Errorf("erreur lors du calcul de la somme de contrôle: %v", err)
+	if _, err = io.Copy(hasher, file); err != nil {
+		return fmt.Errorf("erreur lors du calcul de la somme de contrôle: %w", err)
 	}
 
 	actualChecksum := fmt.Sprintf("%x", hasher.Sum(nil))
@@ -229,28 +211,34 @@ func (d *Downloader) verifyChecksum(filePath, expectedChecksum, checksumType str
 	return nil
 }
 
+// downloadJob represents a download task for concurrent processing.
+type downloadJob struct {
+	pkg      *Package
+	destPath string
+}
+
+// downloadResult represents the result of a download task.
+type downloadResult struct {
+	pkg *Package
+	err error
+}
+
+// DownloadMultiple downloads multiple packages concurrently.
+// maxConcurrent specifies the number of parallel downloads (defaults to 5).
 func (d *Downloader) DownloadMultiple(packages []*Package, destDir string, maxConcurrent int) []error {
 	if maxConcurrent <= 0 {
-		maxConcurrent = 5
-	}
-
-	type downloadJob struct {
-		pkg      *Package
-		destPath string
-	}
-
-	type downloadResult struct {
-		pkg *Package
-		err error
+		maxConcurrent = defaultConcurrency
 	}
 
 	jobs := make(chan downloadJob, len(packages))
 	results := make(chan downloadResult, len(packages))
 
+	// Start worker goroutines
+	var wg sync.WaitGroup
 	for w := 0; w < maxConcurrent; w++ {
+		wg.Add(1)
 		go func() {
-			// each goroutine processes jobs from the jobs channel
-			// when one Go routine is occupied, another one can take the next job
+			defer wg.Done()
 			for job := range jobs {
 				err := d.DownloadWithProgress(job.pkg, job.destPath, nil)
 				results <- downloadResult{pkg: job.pkg, err: err}
@@ -258,39 +246,46 @@ func (d *Downloader) DownloadMultiple(packages []*Package, destDir string, maxCo
 		}()
 	}
 
+	// Queue download jobs
 	for _, pkg := range packages {
-		filename := pkg.Filename
-		if filename == "" {
-			filename = fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
-		}
-		destPath := filepath.Join(destDir, filename)
+		destPath := filepath.Join(destDir, getPackageFilename(pkg))
 		jobs <- downloadJob{pkg: pkg, destPath: destPath}
 	}
 	close(jobs)
 
+	// Wait for all workers to complete in a separate goroutine
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results
 	var errors []error
-	for i := 0; i < len(packages); i++ {
-		result := <-results
+	for result := range results {
 		if result.err != nil {
-			errors = append(errors, fmt.Errorf("erreur pour le paquet %s: %v", result.pkg.Name, result.err))
+			errors = append(errors, fmt.Errorf("erreur pour le paquet %s: %w", result.pkg.Name, result.err))
 		}
 	}
 
 	return errors
 }
 
+// DownloadSourcePackage downloads all files of a source package.
 func (d *Downloader) DownloadSourcePackage(sourcePkg *SourcePackage, destDir string) error {
 	return sourcePkg.downloadFiles(destDir, true, nil)
 }
 
+// DownloadSourcePackageSilent downloads all files of a source package without output.
 func (d *Downloader) DownloadSourcePackageSilent(sourcePkg *SourcePackage, destDir string) error {
 	return sourcePkg.downloadFiles(destDir, false, nil)
 }
 
+// DownloadSourcePackageWithProgress downloads a source package with progress reporting.
 func (d *Downloader) DownloadSourcePackageWithProgress(sourcePkg *SourcePackage, destDir string, progressCallback func(filename string, downloaded, total int64)) error {
 	return sourcePkg.downloadFiles(destDir, true, progressCallback)
 }
 
+// DownloadSourceFile downloads a single source file with checksum verification.
 func (d *Downloader) DownloadSourceFile(sourceFile *SourceFile, destDir string) error {
 	if sourceFile.URL == "" {
 		return fmt.Errorf("aucune URL spécifiée pour le fichier %s", sourceFile.Name)
@@ -298,17 +293,11 @@ func (d *Downloader) DownloadSourceFile(sourceFile *SourceFile, destDir string) 
 
 	destPath := filepath.Join(destDir, sourceFile.Name)
 
-	tempPkg := &Package{
-		Name:        "source-file",
-		DownloadURL: sourceFile.URL,
-		Filename:    sourceFile.Name,
-		Size:        sourceFile.Size,
-	}
-
-	err := d.DownloadWithProgress(tempPkg, destPath, nil)
-	if err != nil {
+	if err := d.downloadToFile(sourceFile.URL, destPath, nil); err != nil {
 		return err
 	}
+
+	fmt.Printf("Fichier %s téléchargé avec succès\n", sourceFile.Name)
 
 	if d.VerifyChecksums {
 		if sourceFile.SHA256Sum != "" {
@@ -321,28 +310,28 @@ func (d *Downloader) DownloadSourceFile(sourceFile *SourceFile, destDir string) 
 	return nil
 }
 
+// DownloadOrigTarball downloads only the original tarball from a source package.
 func (d *Downloader) DownloadOrigTarball(sourcePkg *SourcePackage, destDir string) error {
 	origFile := sourcePkg.GetOrigTarball()
 	if origFile == nil {
 		return fmt.Errorf("aucun fichier tarball original trouvé pour le paquet source %s", sourcePkg.Name)
 	}
-
 	return d.DownloadSourceFile(origFile, destDir)
 }
 
+// GetFileSize returns the Content-Length of a URL via HEAD request.
 func (d *Downloader) GetFileSize(url string) (int64, error) {
-	client := &http.Client{Timeout: d.Timeout}
+	client := d.newHTTPClient()
 
 	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("erreur lors de la création de la requête: %w", err)
 	}
-
 	req.Header.Set("User-Agent", d.UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("erreur lors de la requête HEAD: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -353,22 +342,14 @@ func (d *Downloader) GetFileSize(url string) (int64, error) {
 	return resp.ContentLength, nil
 }
 
-// DownloadToDir downloads a package to a directory with automatic filename generation
+// DownloadToDir downloads a package to a directory with automatic filename generation.
 func (d *Downloader) DownloadToDir(pkg *Package, destDir string) error {
-	filename := pkg.Filename
-	if filename == "" {
-		filename = fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
-	}
-	destPath := filepath.Join(destDir, filename)
+	destPath := filepath.Join(destDir, getPackageFilename(pkg))
 	return d.DownloadWithProgress(pkg, destPath, nil)
 }
 
-// DownloadToDirSilent downloads a package to a directory silently with automatic filename generation
+// DownloadToDirSilent downloads a package to a directory silently with automatic filename generation.
 func (d *Downloader) DownloadToDirSilent(pkg *Package, destDir string) error {
-	filename := pkg.Filename
-	if filename == "" {
-		filename = fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
-	}
-	destPath := filepath.Join(destDir, filename)
+	destPath := filepath.Join(destDir, getPackageFilename(pkg))
 	return d.DownloadSilent(pkg, destPath)
 }
