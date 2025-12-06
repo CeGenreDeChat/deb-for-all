@@ -97,7 +97,7 @@ func getPackageFilename(pkg *Package) string {
 
 // downloadToFile performs the actual download to a file with optional progress callback.
 func (d *Downloader) downloadToFile(url, destPath string, progressCallback func(downloaded, total int64)) error {
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(destPath), DirPermission); err != nil {
 		return fmt.Errorf("impossible de créer le répertoire parent: %w", err)
 	}
 
@@ -181,6 +181,7 @@ func (d *Downloader) DownloadWithChecksum(pkg *Package, destPath, checksum, chec
 	return nil
 }
 
+// verifyChecksum verifies a file's checksum against the expected value.
 func (d *Downloader) verifyChecksum(filePath, expectedChecksum, checksumType string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
