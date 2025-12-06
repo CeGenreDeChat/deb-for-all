@@ -9,11 +9,14 @@ import (
 	"strings"
 )
 
-// File permission constants.
+// File permission constants used across the package.
 const (
-	dirPermission  = 0755
-	filePermission = 0644
+	DirPermission  = 0755 // Default directory permission
+	FilePermission = 0644 // Default file permission
 )
+
+// Compression extensions supported for Packages files.
+var CompressionExtensions = []string{"", ".gz", ".xz"}
 
 // Package represents a Debian binary package with all standard control file fields.
 // It is the central abstraction for package metadata in the library.
@@ -201,7 +204,7 @@ func (sp *SourcePackage) downloadFiles(destDir string, verbose bool, progressCal
 		return fmt.Errorf("aucun fichier à télécharger pour le paquet source %s", sp.Name)
 	}
 
-	if err := os.MkdirAll(destDir, dirPermission); err != nil {
+	if err := os.MkdirAll(destDir, DirPermission); err != nil {
 		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
 	}
 
@@ -305,7 +308,7 @@ func ReadControlFile(filePath string) (*Package, error) {
 // WriteControlFile writes the package metadata to a control file.
 func (p *Package) WriteControlFile(filePath string) error {
 	content := p.FormatAsControl()
-	if err := os.WriteFile(filePath, []byte(content), filePermission); err != nil {
+	if err := os.WriteFile(filePath, []byte(content), FilePermission); err != nil {
 		return fmt.Errorf("erreur d'écriture du fichier control: %w", err)
 	}
 	return nil
