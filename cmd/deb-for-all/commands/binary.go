@@ -6,9 +6,21 @@ import (
 	"path/filepath"
 
 	"github.com/CeGenreDeChat/deb-for-all/pkg/debian"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func DownloadBinaryPackage(packageName, version, destDir string, silent bool) error {
+func DownloadBinaryPackage(packageName, version, destDir string, silent bool, localizer *i18n.Localizer) error {
+	if !silent {
+		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
+			MessageID: "command.download.start",
+			TemplateData: map[string]any{
+				"Package": packageName,
+				"Version": version,
+				"Dest":    destDir,
+			},
+		}))
+	}
+
 	var err error
 
 	if packageName == "" {

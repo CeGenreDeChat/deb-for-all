@@ -6,9 +6,28 @@ import (
 	"strings"
 
 	"github.com/CeGenreDeChat/deb-for-all/pkg/debian"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func CreateMirror(baseURL, suites, components, architectures, destDir string, downloadPkgs, verbose bool) error {
+func CreateMirror(baseURL, suites, components, architectures, destDir string, downloadPkgs, verbose bool, localizer *i18n.Localizer) error {
+	if verbose {
+		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
+			MessageID: "command.mirror.start",
+			TemplateData: map[string]any{
+				"URL": baseURL,
+			},
+		}))
+		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
+			MessageID: "command.mirror.details",
+			TemplateData: map[string]any{
+				"Suites":        suites,
+				"Components":    components,
+				"Architectures": architectures,
+				"Dest":          destDir,
+			},
+		}))
+	}
+
 	// Parse comma-separated values
 	suiteList := strings.Split(strings.TrimSpace(suites), ",")
 	componentList := strings.Split(strings.TrimSpace(components), ",")

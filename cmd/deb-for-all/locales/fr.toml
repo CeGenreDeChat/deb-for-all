@@ -1,0 +1,29 @@
+# Commands
+"command.help" = "Afficher cette aide"
+"command.download" = "Télécharger un paquet binaire"
+"command.download.start" = "Téléchargement du paquet binaire {{.Package}} (version: {{.Version}}) vers {{.Dest}}"
+"command.download.success" = "Paquet binaire {{.Package}} téléchargé avec succès vers {{.Dest}}"
+"command.download_source" = "Télécharger un paquet source"
+"command.download_source.start" = "Téléchargement du paquet source {{.Package}} (version: {{.Version}}) vers {{.Dest}}"
+"command.download_source.orig_only" = "Mode: tarball original uniquement"
+"command.download_source.success" = "Paquet source {{.Package}} téléchargé avec succès vers {{.Dest}}"
+"command.mirror" = "Créer un miroir d'un dépôt Debian"
+
+# Flags
+"flag.command" = "Commande à exécuter: download, download-source, mirror"
+"flag.package" = "Nom du paquet"
+"flag.version" = "Version du paquet"
+"flag.dest" = "Répertoire de destination (défaut: ./downloads)"
+"flag.orig_only" = "Télécharger uniquement le tarball original (pour les paquets sources)"
+"flag.silent" = "Mode silencieux (pas d'affichage de progression)"
+"flag.help" = "Afficher l'aide"
+"flag.url" = "URL du dépôt à mettre en miroir (défaut: http://deb.debian.org/debian)"
+
+"flag.suites" = "Suites à mettre en miroir (séparées par des virgules, défaut: bookworm)"
+"flag.components" = "Composants à mettre en miroir (séparés par des virgules, défaut: main)"
+"flag.architectures" = "Architectures à mettre en miroir (séparées par des virgules, défaut: amd64)"
+"flag.download_packages" = "Télécharger les paquets .deb (pas seulement les métadonnées)"
+"flag.verbose" = "Affichage verbeux"
+
+# Errors
+"error.unknown_command" = "Commande inconnue: {{.Command}}"

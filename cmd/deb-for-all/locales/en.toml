@@ -1,0 +1,29 @@
+# Commands
+"command.help" = "Display this help message"
+"command.download" = "Download a binary package"
+"command.download.start" = "Downloading binary package {{.Package}} (version: {{.Version}}) to {{.Dest}}"
+"command.download.success" = "Binary package {{.Package}} downloaded successfully to {{.Dest}}"
+"command.download_source" = "Download a source package"
+"command.download_source.start" = "Downloading source package {{.Package}} (version: {{.Version}}) to {{.Dest}}"
+"command.download_source.orig_only" = "Mode: original tarball only"
+"command.download_source.success" = "Source package {{.Package}} downloaded successfully to {{.Dest}}"
+"command.mirror" = "Create a mirror of a Debian repository"
+
+# Flags
+"flag.command" = "Command to execute: download, download-source, mirror"
+"flag.package" = "Package name"
+"flag.version" = "Package version"
+"flag.dest" = "Destination directory (default: ./downloads)"
+"flag.orig_only" = "Download only the original tarball (for source packages)"
+"flag.silent" = "Silent mode (no progress output)"
+"flag.help" = "Display this help message"
+"flag.url" = "Repository URL to mirror (default: http://deb.debian.org/debian)"
+
+"flag.suites" = "Suites to mirror (comma-separated, default: bookworm)"
+"flag.components" = "Components to mirror (comma-separated, default: main)"
+"flag.architectures" = "Architectures to mirror (comma-separated, default: amd64)"
+"flag.download_packages" = "Download .deb packages (not just metadata)"
+"flag.verbose" = "Verbose output"
+
+# Errors
+"error.unknown_command" = "Unknown command: {{.Command}}"
