@@ -1,5 +1,15 @@
 # deb-for-all AI Coding Agent Instructions
 
+## Context-Specific Instructions
+
+This project uses specialized instruction files for different contexts. Apply the relevant instructions based on the task:
+
+| Instruction File | Apply When |
+|------------------|------------|
+| `.github/instructions/go.instructions.md` | Writing or modifying Go code |
+| `.github/instructions/python.instructions.md` | Writing or modifying Python code |
+| `.github/instructions/test_suite.instructions.md` | Creating or editing Robot Framework test suites |
+
 ## Project Architecture
 
 **deb-for-all** is a Go library and CLI tool for Debian package management and repository mirroring. The codebase follows a clean architecture pattern:
@@ -9,7 +19,12 @@
   - `repository.go`: Repository interaction, Release/Packages file parsing
   - `downloader.go`: HTTP downloading with retry, progress tracking, checksum verification
   - `mirror.go`: High-level mirroring orchestration combining the above components
-- **`cmd/deb-for-all/`**: CLI binary that wraps the library functionality
+- **`cmd/deb-for-all/`**: CLI binary using Cobra framework with i18n support
+  - `main.go`: Entry point, Config struct, i18n initialization, command dispatcher
+  - `root.go`: Cobra root command and subcommands definition
+  - `help.go`: Help message customization
+  - `commands/`: Command implementations (binary.go, source.go, repo.go)
+  - `locales/`: Translation files (en.toml, fr.toml)
 - **`examples/`**: Working examples demonstrating library usage patterns
 - **`internal/`**: Private utilities (config, errors) not part of public API
 
@@ -34,6 +49,22 @@ type Repository struct {
 }
 ```
 
+### CLI Architecture (Cobra + i18n)
+The CLI uses [Cobra](https://github.com/spf13/cobra) for command parsing and [go-i18n](https://github.com/nicksnyder/go-i18n) for internationalization:
+```go
+// Commands are defined in root.go using Cobra
+rootCmd.AddCommand(downloadCmd)
+rootCmd.AddCommand(downloadSourceCmd)
+rootCmd.AddCommand(mirrorCmd)
+
+// Translations loaded from locales/*.toml files
+bundle.MustLoadMessageFile("cmd/deb-for-all/locales/en.toml")
+bundle.MustLoadMessageFile("cmd/deb-for-all/locales/fr.toml")
+
+// Language selection via DEB_FOR_ALL_LANG environment variable
+lang := os.Getenv("DEB_FOR_ALL_LANG") // "en" or "fr"
+```
+
 ### Error Handling Pattern
 - Use `fmt.Errorf()` with error wrapping: `fmt.Errorf("failed to X: %w", err)`
 - Custom errors in `internal/errors/` with structured codes and messages
@@ -45,19 +76,22 @@ Repository files support multiple compression formats automatically:
 ```go
 extensions := []string{"", ".gz", ".xz"}  // Try uncompressed, gzip, xz
 ```
-Uses `github.com/ulikunitz/xz` for XZ decompression (only external dependency).
+Uses `github.com/ulikunitz/xz` for XZ decompression.
 
 ### CLI Command Structure
 ```bash
-# All commands follow this pattern:
-deb-for-all -command <action> [specific-flags]
+# Subcommand-based pattern using Cobra:
+deb-for-all <command> [flags]
 
-# Mirror operations (core functionality):
-deb-for-all -command mirror -dest ./path -verbose
-deb-for-all -command mirror -download-packages -suites bookworm,bullseye
+# Download binary package:
+deb-for-all download -p <package> --version <ver> -d ./dest
 
-# Package operations:
-deb-for-all -command download -package <name> -version <ver>
+# Download source package:
+deb-for-all download-source -p <package> --orig-only -d ./dest
+
+# Mirror operations:
+deb-for-all mirror -u http://deb.debian.org/debian --suites bookworm -d ./mirror
+deb-for-all mirror --download-packages --components main,contrib -v
 ```
 
 ## Development Workflow
@@ -72,13 +106,16 @@ make mirror-example # Run examples/mirror/main.go
 ### Adding New Features
 1. **Library changes**: Add to appropriate `pkg/debian/*.go` file
 2. **CLI integration**: Update `cmd/deb-for-all/main.go` flag parsing and run() function
-3. **Example usage**: Add to `examples/` directory
-4. **Robot tests**: Add test cases to `test/suites/*.robot` using existing patterns
+3. **New CLI command**: Add subcommand in `root.go`, implementation in `commands/` directory
+4. **Translations**: Update `locales/en.toml` and `locales/fr.toml` with new message keys
+5. **Example usage**: Add to `examples/` directory
+6. **Robot tests**: Add test cases to `test/suites/*.robot` using existing patterns
 
 ### Testing Strategy
 - **No unit tests** by design (stated in project goal)
 - **Robot Framework** integration tests in `test/suites/`
 - **Examples** serve as living documentation and manual testing
+- **Python test runner**: Use `test/start.py` to run Robot Framework tests (requires virtual environment)
 
 ## Debian-Specific Knowledge
 

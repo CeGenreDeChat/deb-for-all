@@ -68,6 +68,92 @@ make clean
 
 ---
 
+## CLI Usage
+
+The `deb-for-all` binary provides several commands for Debian package management.
+
+### Language Configuration
+
+Set the `DEB_FOR_ALL_LANG` environment variable to change the output language:
+```bash
+# English (default)
+export DEB_FOR_ALL_LANG=en
+
+# French
+export DEB_FOR_ALL_LANG=fr
+```
+
+### Commands
+
+#### Download Binary Package
+Download a binary package from Debian repositories:
+```bash
+deb-for-all download -p <package-name> [flags]
+```
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--package` | `-p` | Package name (required) | - |
+| `--version` | - | Specific version to download | latest |
+| `--dest` | `-d` | Destination directory | `./downloads` |
+| `--silent` | `-s` | Suppress output | `false` |
+| `--verbose` | `-v` | Verbose output | `false` |
+
+**Example:**
+```bash
+deb-for-all download -p curl --version 7.88.1-10 -d ./packages
+```
+
+#### Download Source Package
+Download source files for a package:
+```bash
+deb-for-all download-source -p <package-name> [flags]
+```
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--package` | `-p` | Package name (required) | - |
+| `--version` | - | Specific version to download | latest |
+| `--dest` | `-d` | Destination directory | `./downloads` |
+| `--orig-only` | - | Download only the orig tarball | `false` |
+| `--silent` | `-s` | Suppress output | `false` |
+| `--verbose` | `-v` | Verbose output | `false` |
+
+**Example:**
+```bash
+deb-for-all download-source -p nginx --orig-only -d ./sources
+```
+
+#### Create Mirror
+Create a local mirror of a Debian repository:
+```bash
+deb-for-all mirror [flags]
+```
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--url` | `-u` | Repository base URL | `http://deb.debian.org/debian` |
+| `--suites` | - | Comma-separated list of suites | `bookworm` |
+| `--components` | - | Comma-separated list of components | `main` |
+| `--architectures` | - | Comma-separated list of architectures | `amd64` |
+| `--dest` | `-d` | Destination directory | `./downloads` |
+| `--download-packages` | - | Download actual packages (not just metadata) | `false` |
+| `--verbose` | `-v` | Verbose output | `false` |
+
+**Examples:**
+```bash
+# Mirror metadata only
+deb-for-all mirror -u http://deb.debian.org/debian --suites bookworm -d ./mirror
+
+# Mirror with packages
+deb-for-all mirror --suites bookworm,bullseye --components main,contrib --download-packages -d ./mirror -v
+
+# Mirror multiple architectures
+deb-for-all mirror --architectures amd64,arm64 --suites bookworm -d ./mirror
+```
+
+---
+
 ## Contributing
 
 Contributions are welcome! Here's how you can help:
