@@ -27,8 +27,8 @@ func DownloadBinaryPackage(packageName, version, destDir string, silent bool, lo
 		return fmt.Errorf("le nom du paquet est requis")
 	}
 
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de destination: %v", err)
+	if err := os.MkdirAll(destDir, debian.DirPermission); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
 	}
 
 	// Create repository to search for the package
@@ -50,14 +50,14 @@ func DownloadBinaryPackage(packageName, version, destDir string, silent bool, lo
 	}
 
 	if _, err = repo.FetchPackages(); err != nil {
-		return fmt.Errorf("erreur lors de la récupération des paquets: %v", err)
+		return fmt.Errorf("erreur lors de la récupération des paquets: %w", err)
 	}
 
 	var pkgMetadata *debian.Package
 
 	// Get package metadata
 	if pkgMetadata, err = repo.GetPackageMetadata(packageName); err != nil {
-		return fmt.Errorf("erreur lors de la récupération des métadonnées pour le paquet %s: %v", packageName, err)
+		return fmt.Errorf("erreur lors de la récupération des métadonnées pour le paquet %s: %w", packageName, err)
 	} else if pkgMetadata == nil {
 		return fmt.Errorf("impossible de récupérer les métadonnées pour le paquet %s", packageName)
 	}
@@ -93,7 +93,7 @@ func DownloadBinaryPackage(packageName, version, destDir string, silent bool, lo
 	}
 
 	if err != nil {
-		return fmt.Errorf("erreur lors du téléchargement: %v", err)
+		return fmt.Errorf("erreur lors du téléchargement: %w", err)
 	}
 
 	if !silent {

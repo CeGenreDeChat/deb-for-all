@@ -24,8 +24,8 @@ func DownloadSourcePackage(packageName, version, destDir string, origOnly, silen
 		return fmt.Errorf("le nom du paquet est requis")
 	}
 
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de destination: %v", err)
+	if err := os.MkdirAll(destDir, debian.DirPermission); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
 	}
 
 	downloader := debian.NewDownloader()
@@ -56,7 +56,7 @@ func DownloadSourcePackage(packageName, version, destDir string, origOnly, silen
 	}
 
 	if err != nil {
-		return fmt.Errorf("erreur lors du téléchargement: %v", err)
+		return fmt.Errorf("erreur lors du téléchargement: %w", err)
 	}
 
 	if !silent {

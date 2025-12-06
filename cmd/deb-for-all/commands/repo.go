@@ -56,12 +56,12 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 
 	// Validate configuration
 	if err := config.Validate(); err != nil {
-		return fmt.Errorf("configuration invalide: %v", err)
+		return fmt.Errorf("configuration invalide: %w", err)
 	}
 
 	// Create destination directory
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de destination: %v", err)
+	if err := os.MkdirAll(destDir, debian.DirPermission); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
 	}
 
 	// Create mirror
@@ -96,7 +96,7 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 	}
 
 	if err := mirror.Clone(); err != nil {
-		return fmt.Errorf("erreur lors de la création du miroir: %v", err)
+		return fmt.Errorf("erreur lors de la création du miroir: %w", err)
 	}
 
 	if verbose {
