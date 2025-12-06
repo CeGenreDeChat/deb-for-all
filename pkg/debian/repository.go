@@ -24,9 +24,6 @@ const (
 // Default repository sections for package search.
 var defaultSections = []string{"main", "contrib", "non-free"}
 
-// Supported compression extensions for Packages files.
-var compressionExtensions = []string{"", ".gz", ".xz"}
-
 // PackageInfo contains lightweight package information for search results.
 type PackageInfo struct {
 	Name         string
@@ -133,7 +130,7 @@ func (r *Repository) FetchPackages() ([]string, error) {
 func (r *Repository) fetchPackagesForSectionArch(section, arch string) ([]string, error) {
 	var lastErr error
 
-	for _, ext := range compressionExtensions {
+	for _, ext := range CompressionExtensions {
 		packagesURL := r.buildPackagesURLWithDist(r.Distribution, section, arch) + ext
 
 		if !r.checkURLExists(packagesURL) {
