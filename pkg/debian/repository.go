@@ -752,6 +752,14 @@ func (r *Repository) ResolveDependencies(specs []PackageSpec, exclude map[string
 		return nil, fmt.Errorf("aucune métadonnée de paquet disponible - appelez d'abord FetchPackages()")
 	}
 
+	index := make(map[string]*Package, len(r.PackageMetadata))
+	for i := range r.PackageMetadata {
+		p := &r.PackageMetadata[i]
+		if _, exists := index[p.Name]; !exists {
+			index[p.Name] = p
+		}
+	}
+
 	result := make(map[string]Package)
 	seen := make(map[string]bool)
 	queue := make([]PackageSpec, 0, len(specs))
@@ -766,9 +774,9 @@ func (r *Repository) ResolveDependencies(specs []PackageSpec, exclude map[string
 			continue
 		}
 
-		pkg, err := r.GetPackageMetadata(name)
-		if err != nil {
-			return nil, err
+		pkg := index[name]
+		if pkg == nil {
+			return nil, fmt.Errorf("paquet '%s' non trouvé dans les métadonnées", name)
 		}
 		if spec.Version != "" && pkg.Version != spec.Version {
 			return nil, fmt.Errorf("version %s introuvable pour %s (trouvé: %s)", spec.Version, name, pkg.Version)
@@ -778,8 +786,8 @@ func (r *Repository) ResolveDependencies(specs []PackageSpec, exclude map[string
 		seen[name] = true
 
 		deps := r.collectDependencies(pkg, exclude)
-		for _, dep := range deps {
-			depName := firstAlternative(dep)
+		for _, depExpr := range deps {
+			depName := chooseAvailableAlternative(depExpr, index)
 			if depName == "" || seen[depName] {
 				continue
 			}
@@ -799,31 +807,32 @@ func (r *Repository) collectDependencies(pkg *Package, exclude map[string]bool) 
 		deps = append(deps, items...)
 	}
 
+	// Align with apt-style resolution: hard deps only, optionals when not excluded.
 	add("depends", pkg.Depends)
 	add("pre-depends", pkg.PreDepends)
-	add("recommends", pkg.Recommends)
-	add("suggests", pkg.Suggests)
-	add("enhances", pkg.Enhances)
-	add("breaks", pkg.Breaks)
-	add("conflicts", pkg.Conflicts)
-	add("provides", pkg.Provides)
-	add("replaces", pkg.Replaces)
+	add("recommends", pkg.Recommends) // apt installs Recommends by défaut
+	add("suggests", pkg.Suggests)     // optional; can be excluded via flag
+	add("enhances", pkg.Enhances)     // optional; can be excluded via flag
 
 	return deps
 }
 
-// firstAlternative returns the first package name of a dependency expression (handles OR choices).
-func firstAlternative(expr string) string {
+// chooseAvailableAlternative returns the first available package name from an OR expression.
+func chooseAvailableAlternative(expr string, index map[string]*Package) string {
 	parts := strings.Split(expr, "|")
-	if len(parts) == 0 {
-		return ""
+	for _, part := range parts {
+		candidate := strings.TrimSpace(part)
+		if space := strings.IndexAny(candidate, " (<"); space > 0 {
+			candidate = strings.TrimSpace(candidate[:space])
+		}
+		if candidate == "" {
+			continue
+		}
+		if _, ok := index[candidate]; ok {
+			return candidate
+		}
 	}
-	first := strings.TrimSpace(parts[0])
-	// Drop version/arch qualifiers (e.g., "pkg (>= 1.0)")
-	if space := strings.IndexAny(first, " (<"); space > 0 {
-		first = strings.TrimSpace(first[:space])
-	}
-	return first
+	return ""
 }
 
 // FetchReleaseFile downloads and parses the Release file from the repository.

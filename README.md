@@ -123,6 +123,11 @@ deb-for-all download-source -p <package-name> [flags]
 | `--silent` | `-s` | Suppress output | `false` |
 | `--verbose` | `-v` | Verbose output | `false` |
 
+**Example:**
+```bash
+deb-for-all download-source -p nginx --orig-only -d ./sources
+```
+
 #### Update Package Index Cache
 Fetch and cache Release/Packages metadata for suites/components/architectures:
 ```bash
@@ -156,11 +161,6 @@ deb-for-all custom-repo --packages-xml ./packages.xml --exclude-deps recommends,
 | `--keyring` | - | Comma-separated keyrings for GPG verification | - |
 | `--no-gpg-verify` | - | Disable signature verification | `false` |
 | `--verbose` | `-v` | Verbose output | `false` |
-
-**Example:**
-```bash
-deb-for-all download-source -p nginx --orig-only -d ./sources
-```
 
 #### Create Mirror
 Create a local mirror of a Debian repository:
