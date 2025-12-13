@@ -509,7 +509,7 @@ type DownloadInfo struct {
 ```go
 func ManagePackages(pkg Package) error
 ```
-This function manages the installation, removal, or upgrade of a Debian package.
+Not provided: deb-for-all is scoped to downloading and mirroring packages only and does not perform installation, removal, or upgrade operations.
 
 ### ReadControlFile
 

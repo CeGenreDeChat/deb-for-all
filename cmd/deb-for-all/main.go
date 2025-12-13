@@ -23,6 +23,7 @@ type Config struct {
 	PackageName   string
 	Version       string
 	DestDir       string
+	CacheDir      string
 	OrigOnly      bool
 	Silent        bool
 	BaseURL       string
@@ -70,6 +71,8 @@ func run() error {
 		return commands.DownloadSourcePackage(config.PackageName, config.Version, config.DestDir, config.OrigOnly, config.Silent, localizer)
 	case "mirror":
 		return commands.CreateMirror(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.DownloadPkgs, config.Verbose, localizer)
+	case "update":
+		return commands.UpdateCache(config.BaseURL, config.Suites, config.Components, config.Architectures, config.CacheDir, config.Verbose, localizer)
 	default:
 		return errors.New(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "error.unknown_command",

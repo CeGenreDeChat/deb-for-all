@@ -12,6 +12,7 @@ func initCommands() {
 	// Flags globaux
 	rootCmd.PersistentFlags().StringVarP(&config.DestDir, "dest", "d", "./downloads", localize("flag.dest"))
 	rootCmd.PersistentFlags().BoolVarP(&config.Verbose, "verbose", "v", false, localize("flag.verbose"))
+	rootCmd.PersistentFlags().StringVar(&config.CacheDir, "cache", "./cache", localize("flag.cache"))
 
 	// Commande `download`
 	downloadCmd := &cobra.Command{
@@ -41,6 +42,20 @@ func initCommands() {
 	downloadSourceCmd.Flags().BoolVarP(&config.Silent, "silent", "s", false, localize("flag.silent"))
 	downloadSourceCmd.MarkFlagRequired("package")
 	rootCmd.AddCommand(downloadSourceCmd)
+
+	// Commande `update`
+	updateCmd := &cobra.Command{
+		Use:   "update",
+		Short: localize("command.update"),
+		Run: func(cmd *cobra.Command, args []string) {
+			config.Command = "update"
+		},
+	}
+	updateCmd.Flags().StringVar(&config.BaseURL, "url", "http://deb.debian.org/debian", localize("flag.url"))
+	updateCmd.Flags().StringVar(&config.Suites, "suites", "bookworm", localize("flag.suites"))
+	updateCmd.Flags().StringVar(&config.Components, "components", "main", localize("flag.components"))
+	updateCmd.Flags().StringVar(&config.Architectures, "architectures", "amd64", localize("flag.architectures"))
+	rootCmd.AddCommand(updateCmd)
 
 	// Commande `mirror`
 	mirrorCmd := &cobra.Command{

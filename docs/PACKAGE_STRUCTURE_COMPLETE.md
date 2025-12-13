@@ -5,6 +5,8 @@
 ### Objectif
 Mettre à jour la structure `Package` pour inclure **tous les champs possibles** d'un paquet Debian et modifier la fonction `parsePackagesData` pour les parser correctement.
 
+> Note: deb-for-all conserve ces champs uniquement comme métadonnées pour le téléchargement et le mirroring; il n'exécute aucune installation ni scripts de maintenance.
+
 ## 📋 Champs ajoutés à la structure Package
 
 ### Champs d'identification et téléchargement

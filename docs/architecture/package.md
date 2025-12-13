@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `package.go` file defines the core data structures for representing Debian packages (binary and source) and provides utilities for parsing and formatting Debian control files. It also exports shared constants and variables used across the entire `pkg/debian` package.
+The `package.go` file defines the core data structures for representing Debian packages (binary and source) and provides utilities for parsing and formatting Debian control files. It also exports shared constants and variables used across the entire `pkg/debian` package. deb-for-all uses these structures for download and mirroring flows only; it does not execute installation or maintainer scripts.
 
 ## Exported Constants and Variables
 

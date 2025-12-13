@@ -8,7 +8,7 @@ Le module Mirror de **deb-for-all** permet de créer des miroirs locaux de dép�
 
 ### 1. Administrateur Système
 - Réduire la bande passante internet
-- Accélérer les installations de paquets
+- Accélérer les téléchargements de paquets pour les postes internes
 - Créer des dépôts offline pour des environnements isolés
 
 ### 2. Développeur/DevOps

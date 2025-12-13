@@ -8,12 +8,17 @@
 "command.download_source.orig_only" = "Mode: original tarball only"
 "command.download_source.success" = "Source package {{.Package}} downloaded successfully to {{.Dest}}"
 "command.mirror" = "Create a mirror of a Debian repository"
+"command.update" = "Update local package index cache"
+"command.update.start" = "Updating cache from {{.URL}} (suites: {{.Suites}}, components: {{.Components}}, architectures: {{.Architectures}}, dest: {{.Dest}})"
+"command.update.suite" = "Caching packages for suite {{.Suite}}"
+"command.update.success" = "Cache updated at {{.Dest}}"
 
 # Flags
-"flag.command" = "Command to execute: download, download-source, mirror"
+"flag.command" = "Command to execute: download, download-source, mirror, update"
 "flag.package" = "Package name"
 "flag.version" = "Package version"
 "flag.dest" = "Destination directory (default: ./downloads)"
+"flag.cache" = "Cache directory for metadata (default: ./cache)"
 "flag.orig_only" = "Download only the original tarball (for source packages)"
 "flag.silent" = "Silent mode (no progress output)"
 "flag.help" = "Display this help message"

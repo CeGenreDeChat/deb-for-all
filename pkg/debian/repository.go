@@ -10,6 +10,8 @@ import (
 	"hash"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -125,6 +127,125 @@ func (r *Repository) FetchPackages() ([]string, error) {
 
 	r.Packages = result
 	return result, nil
+}
+
+// FetchAndCachePackages downloads Packages metadata for all configured sections and architectures
+// and writes the decompressed files to the provided cache directory.
+func (r *Repository) FetchAndCachePackages(cacheDir string) error {
+	if cacheDir == "" {
+		return fmt.Errorf("le répertoire de cache est requis")
+	}
+
+	if r.VerifyRelease {
+		if err := r.FetchReleaseFile(); err != nil {
+			return fmt.Errorf("erreur lors de la récupération du fichier Release: %w", err)
+		}
+	}
+
+	if err := os.MkdirAll(cacheDir, DirPermission); err != nil {
+		return fmt.Errorf("impossible de créer le répertoire de cache: %w", err)
+	}
+
+	var lastErr error
+	foundAtLeastOne := false
+
+	for _, section := range r.Sections {
+		for _, arch := range r.Architectures {
+			if err := r.cachePackagesForSectionArch(cacheDir, section, arch); err != nil {
+				lastErr = err
+				continue
+			}
+			foundAtLeastOne = true
+		}
+	}
+
+	if !foundAtLeastOne {
+		return fmt.Errorf("impossible de mettre en cache les paquets depuis la distribution %s: %w", r.Distribution, lastErr)
+	}
+
+	return nil
+}
+
+func (r *Repository) cachePackagesForSectionArch(cacheDir, section, architecture string) error {
+	var lastErr error
+
+	for _, ext := range CompressionExtensions {
+		packagesURL := r.buildPackagesURLWithDist(r.Distribution, section, architecture) + ext
+
+		if !r.checkURLExists(packagesURL) {
+			lastErr = fmt.Errorf("fichier Packages non accessible: %s", packagesURL)
+			continue
+		}
+
+		data, err := r.downloadPackagesData(packagesURL, ext, section, architecture)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		targetDir := filepath.Join(cacheDir, r.Distribution, section, fmt.Sprintf("binary-%s", architecture))
+		if err := os.MkdirAll(targetDir, DirPermission); err != nil {
+			return fmt.Errorf("impossible de créer le répertoire de cache: %w", err)
+		}
+
+		targetPath := filepath.Join(targetDir, "Packages")
+		if err := os.WriteFile(targetPath, data, FilePermission); err != nil {
+			return fmt.Errorf("erreur lors de l'écriture du cache Packages: %w", err)
+		}
+
+		return nil
+	}
+
+	return lastErr
+}
+
+func (r *Repository) downloadPackagesData(packagesURL, extension, section, architecture string) ([]byte, error) {
+	resp, err := http.Get(packagesURL)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("impossible de récupérer le fichier Packages (HTTP %d)", resp.StatusCode)
+	}
+
+	if extension == "" {
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages: %w", err)
+		}
+
+		if r.VerifyRelease && r.ReleaseInfo != nil {
+			if err := r.VerifyPackagesFileChecksum(section, architecture, data); err != nil {
+				return nil, fmt.Errorf("échec de la vérification du checksum: %w", err)
+			}
+		}
+
+		return data, nil
+	}
+
+	reader, cleanup, err := r.createDecompressor(resp.Body, extension)
+	if err != nil {
+		return nil, err
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages décompressé: %w", err)
+	}
+
+	if r.VerifyRelease && r.ReleaseInfo != nil {
+		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
+		if err := r.verifyDecompressedFileChecksum(filename, data); err != nil {
+			return nil, fmt.Errorf("échec de la vérification du checksum décompressé: %w", err)
+		}
+	}
+
+	return data, nil
 }
 
 // fetchPackagesForSectionArch tries to fetch Packages file for a specific section/arch combination.

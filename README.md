@@ -1,6 +1,6 @@
 # deb-for-all
 
-**deb-for-all** is a comprehensive Go library for managing Debian packages and creating repository mirrors. This project provides both a reusable library and a command-line binary to efficiently handle Debian packages.
+**deb-for-all** is a Go library for downloading Debian packages and creating repository mirrors. This project provides both a reusable library and a command-line binary to efficiently handle Debian package retrieval (no install/remove/upgrade operations).
 
 ---
 
@@ -27,7 +27,7 @@
 
 ---
 
-## Installation and Usage
+## Setup and Usage
 
 ### Prerequisites
 - Go 1.20+
@@ -42,7 +42,7 @@
 git clone https://github.com/CeGenreDeChat/deb-for-all.git
 cd deb-for-all
 
-# Install, build, and test
+# Build and test
 make
 
 # Build for all platforms (Windows/Linux)
@@ -58,7 +58,7 @@ make clean
 ### Available Make Targets
 | Command                 | Description                                      |
 |-------------------------|--------------------------------------------------|
-| `make`                  | Install, build, and test.                        |
+| `make`                  | Build and test.                                  |
 | `make build`            | Build for the local platform.                    |
 | `make build-darwin-64`  | Build for apple (arm64) plateforme apple (arm64) |
 | `make build-linux-64`   | Build for linux plateforme                       |
@@ -117,6 +117,21 @@ deb-for-all download-source -p <package-name> [flags]
 | `--dest` | `-d` | Destination directory | `./downloads` |
 | `--orig-only` | - | Download only the orig tarball | `false` |
 | `--silent` | `-s` | Suppress output | `false` |
+| `--verbose` | `-v` | Verbose output | `false` |
+
+#### Update Package Index Cache
+Fetch and cache Release/Packages metadata for suites/components/architectures:
+```bash
+deb-for-all update --suites bookworm --components main --architectures amd64 --cache ./cache
+```
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--url` | `-u` | Repository URL | `http://deb.debian.org/debian` |
+| `--suites` | - | Suites (comma-separated) | `bookworm` |
+| `--components` | - | Components (comma-separated) | `main` |
+| `--architectures` | - | Architectures (comma-separated) | `amd64` |
+| `--cache` | - | Cache directory | `./cache` |
 | `--verbose` | `-v` | Verbose output | `false` |
 
 **Example:**
