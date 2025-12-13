@@ -78,6 +78,12 @@ type Repository struct {
 	KeyringPaths    []string
 }
 
+// PackageSpec represents a package name/version request.
+type PackageSpec struct {
+	Name    string
+	Version string
+}
+
 // NewRepository creates a new Repository instance with the specified configuration.
 func NewRepository(name, url, description, distribution string, sections, architectures []string) *Repository {
 	return &Repository{
@@ -734,6 +740,90 @@ func (r *Repository) GetPackageMetadata(packageName string) (*Package, error) {
 // GetAllPackageMetadata returns all package metadata.
 func (r *Repository) GetAllPackageMetadata() []Package {
 	return r.PackageMetadata
+}
+
+// ResolveDependencies returns all packages required for the given specs, following dependency
+// relationships and excluding types listed in exclude map (keys lowercased: depends, pre-depends,
+// recommends, suggests, enhances, breaks, conflicts, provides, replaces).
+// Default behavior (exclude empty) mirrors apt: Depends + Pre-Depends + Recommends; other
+// relationships are included unless explicitly excluded.
+func (r *Repository) ResolveDependencies(specs []PackageSpec, exclude map[string]bool) (map[string]Package, error) {
+	if len(r.PackageMetadata) == 0 {
+		return nil, fmt.Errorf("aucune métadonnée de paquet disponible - appelez d'abord FetchPackages()")
+	}
+
+	result := make(map[string]Package)
+	seen := make(map[string]bool)
+	queue := make([]PackageSpec, 0, len(specs))
+	queue = append(queue, specs...)
+
+	for len(queue) > 0 {
+		spec := queue[0]
+		queue = queue[1:]
+
+		name := strings.TrimSpace(spec.Name)
+		if name == "" || seen[name] {
+			continue
+		}
+
+		pkg, err := r.GetPackageMetadata(name)
+		if err != nil {
+			return nil, err
+		}
+		if spec.Version != "" && pkg.Version != spec.Version {
+			return nil, fmt.Errorf("version %s introuvable pour %s (trouvé: %s)", spec.Version, name, pkg.Version)
+		}
+
+		result[name] = *pkg
+		seen[name] = true
+
+		deps := r.collectDependencies(pkg, exclude)
+		for _, dep := range deps {
+			depName := firstAlternative(dep)
+			if depName == "" || seen[depName] {
+				continue
+			}
+			queue = append(queue, PackageSpec{Name: depName})
+		}
+	}
+
+	return result, nil
+}
+
+func (r *Repository) collectDependencies(pkg *Package, exclude map[string]bool) []string {
+	var deps []string
+	add := func(kind string, items []string) {
+		if exclude != nil && exclude[strings.ToLower(kind)] {
+			return
+		}
+		deps = append(deps, items...)
+	}
+
+	add("depends", pkg.Depends)
+	add("pre-depends", pkg.PreDepends)
+	add("recommends", pkg.Recommends)
+	add("suggests", pkg.Suggests)
+	add("enhances", pkg.Enhances)
+	add("breaks", pkg.Breaks)
+	add("conflicts", pkg.Conflicts)
+	add("provides", pkg.Provides)
+	add("replaces", pkg.Replaces)
+
+	return deps
+}
+
+// firstAlternative returns the first package name of a dependency expression (handles OR choices).
+func firstAlternative(expr string) string {
+	parts := strings.Split(expr, "|")
+	if len(parts) == 0 {
+		return ""
+	}
+	first := strings.TrimSpace(parts[0])
+	// Drop version/arch qualifiers (e.g., "pkg (>= 1.0)")
+	if space := strings.IndexAny(first, " (<"); space > 0 {
+		first = strings.TrimSpace(first[:space])
+	}
+	return first
 }
 
 // FetchReleaseFile downloads and parses the Release file from the repository.

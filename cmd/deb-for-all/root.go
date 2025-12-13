@@ -73,4 +73,21 @@ func initCommands() {
 	mirrorCmd.Flags().StringVar(&config.Architectures, "architectures", "amd64", localize("flag.architectures"))
 	mirrorCmd.Flags().BoolVar(&config.DownloadPkgs, "download-packages", false, localize("flag.download_packages"))
 	rootCmd.AddCommand(mirrorCmd)
+
+	// Commande `custom-repo`
+	customRepoCmd := &cobra.Command{
+		Use:   "custom-repo",
+		Short: localize("command.custom_repo"),
+		Run: func(cmd *cobra.Command, args []string) {
+			config.Command = "custom-repo"
+		},
+	}
+	customRepoCmd.Flags().StringVar(&config.BaseURL, "url", "http://deb.debian.org/debian", localize("flag.url"))
+	customRepoCmd.Flags().StringVar(&config.Suites, "suites", "bookworm", localize("flag.suites"))
+	customRepoCmd.Flags().StringVar(&config.Components, "components", "main", localize("flag.components"))
+	customRepoCmd.Flags().StringVar(&config.Architectures, "architectures", "amd64", localize("flag.architectures"))
+	customRepoCmd.Flags().StringVar(&config.PackagesXML, "packages-xml", "", localize("flag.packages_xml"))
+	customRepoCmd.Flags().StringVar(&config.ExcludeDeps, "exclude-deps", "", localize("flag.exclude_deps"))
+	customRepoCmd.MarkFlagRequired("packages-xml")
+	rootCmd.AddCommand(customRepoCmd)
 }

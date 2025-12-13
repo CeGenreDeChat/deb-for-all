@@ -138,6 +138,25 @@ deb-for-all update --suites bookworm --components main --architectures amd64 --c
 | `--cache` | - | Cache directory | `./cache` |
 | `--verbose` | `-v` | Verbose output | `false` |
 
+#### Build Custom Repository (with dependencies)
+Create a subset repository from an XML package list and download all required packages (with optional dependency exclusions):
+```bash
+deb-for-all custom-repo --packages-xml ./packages.xml --exclude-deps recommends,suggests --dest ./custom-repo --suites bookworm --components main --architectures amd64
+```
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--packages-xml` | - | XML file containing `<packages><package version="">name</package></packages>` | - |
+| `--exclude-deps` | - | Dependency types to exclude (e.g., `recommends,suggests`) | - |
+| `--url` | `-u` | Repository URL | `http://deb.debian.org/debian` |
+| `--suites` | - | Suites (comma-separated) | `bookworm` |
+| `--components` | - | Components (comma-separated) | `main` |
+| `--architectures` | - | Architectures (comma-separated) | `amd64` |
+| `--dest` | `-d` | Destination directory | `./downloads` |
+| `--keyring` | - | Comma-separated keyrings for GPG verification | - |
+| `--no-gpg-verify` | - | Disable signature verification | `false` |
+| `--verbose` | `-v` | Verbose output | `false` |
+
 **Example:**
 ```bash
 deb-for-all download-source -p nginx --orig-only -d ./sources
