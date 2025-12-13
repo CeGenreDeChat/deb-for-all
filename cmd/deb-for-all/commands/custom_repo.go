@@ -55,6 +55,11 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 		return fmt.Errorf("unable to create destination directory: %w", err)
 	}
 
+	metadataRoot := filepath.Join(destDir, "dists")
+	if err := os.MkdirAll(metadataRoot, debian.DirPermission); err != nil {
+		return fmt.Errorf("unable to create metadata directory: %w", err)
+	}
+
 	for _, suite := range suiteList {
 		repo := debian.NewRepository("custom-repo"+suite, baseURL, "custom repo", suite, componentList, archList)
 		repo.SetKeyringPaths(keyrings)
@@ -62,55 +67,146 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 			repo.DisableSignatureVerification()
 		}
 
-		if err := validateComponentsAndArchitectures(repo, suite, componentList, archList, localizer); err != nil {
+		packageMetadata := make(map[string]map[string][]debian.Package)
+		downloader := debian.NewDownloader()
+
+		for _, component := range componentList {
+			repo.SetSections([]string{component})
+
+			if err := validateComponentsAndArchitectures(repo, suite, []string{component}, archList, localizer); err != nil {
+				return err
+			}
+
+			if verbose {
+				fmt.Printf("Suite %s component %s: fetching metadata...\n", suite, component)
+			}
+
+			if _, err := repo.FetchPackages(); err != nil {
+				return fmt.Errorf("failed to fetch packages for %s/%s: %w", suite, component, err)
+			}
+
+			resolved, err := repo.ResolveDependencies(packageSpecs, excludeSet)
+			if err != nil {
+				return fmt.Errorf("failed to resolve dependencies for %s/%s: %w", suite, component, err)
+			}
+
+			if verbose {
+				fmt.Printf("Suite %s component %s: %d packages to download\n", suite, component, len(resolved))
+			}
+
+			for _, pkg := range resolved {
+				arch := pkg.Architecture
+				if arch == "" {
+					arch = archList[0]
+				}
+
+				if _, ok := packageMetadata[component]; !ok {
+					packageMetadata[component] = make(map[string][]debian.Package)
+				}
+
+				relPath := pkg.Filename
+				if relPath == "" {
+					filename := filepath.Base(packageFilename(&pkg))
+					relPath = filepath.ToSlash(filepath.Join("pool", component, filename))
+				}
+
+				targetPath := filepath.Join(destDir, filepath.FromSlash(relPath))
+				targetDir := filepath.Dir(targetPath)
+
+				skip, err := downloader.ShouldSkipDownload(&pkg, targetPath)
+				if err != nil {
+					return fmt.Errorf("failed to check existing file for %s: %w", pkg.Name, err)
+				}
+				if skip {
+					if verbose {
+						fmt.Printf("Suite %s component %s: skipping %s (already downloaded, checksum verified)\n", suite, component, pkg.Name)
+					}
+					pkg.Filename = filepath.ToSlash(relPath)
+					packageMetadata[component][arch] = append(packageMetadata[component][arch], pkg)
+					continue
+				}
+
+				if err := os.MkdirAll(targetDir, debian.DirPermission); err != nil {
+					return fmt.Errorf("unable to create pool directory %s: %w", targetDir, err)
+				}
+
+				if err := downloader.DownloadWithProgress(&pkg, targetPath, nil); err != nil {
+					return fmt.Errorf("failed to download %s: %w", pkg.Name, err)
+				}
+
+				pkg.Filename = filepath.ToSlash(relPath)
+				packageMetadata[component][arch] = append(packageMetadata[component][arch], pkg)
+			}
+		}
+
+		if err := debian.WritePackagesMetadata(metadataRoot, suite, packageMetadata); err != nil {
 			return err
 		}
 
-		if verbose {
-			fmt.Printf("Suite %s: fetching metadata...\n", suite)
-		}
-
-		if _, err := repo.FetchPackages(); err != nil {
-			return fmt.Errorf("failed to fetch packages for %s: %w", suite, err)
-		}
-
-		resolved, err := repo.ResolveDependencies(packageSpecs, excludeSet)
-		if err != nil {
-			return fmt.Errorf("failed to resolve dependencies for %s: %w", suite, err)
-		}
-
-		if verbose {
-			fmt.Printf("Suite %s: %d packages to download\n", suite, len(resolved))
-		}
-
-		downloader := debian.NewDownloader()
-		poolDir := filepath.Join(destDir, "pool", suite)
-
-		for _, pkg := range resolved {
-			targetDir := filepath.Join(poolDir, pkg.Section)
-			if targetDir == poolDir || pkg.Section == "" {
-				targetDir = filepath.Join(poolDir, "main")
-			}
-
-			destPath := filepath.Join(targetDir, packageFilename(&pkg))
-			skip, err := downloader.ShouldSkipDownload(&pkg, destPath)
-			if err != nil {
-				return fmt.Errorf("failed to check existing file for %s: %w", pkg.Name, err)
-			}
-			if skip {
-				if verbose {
-					fmt.Printf("Suite %s: skipping %s (already downloaded, checksum verified)\n", suite, pkg.Name)
-				}
-				continue
-			}
-
-			if err := downloader.DownloadToDir(&pkg, targetDir); err != nil {
-				return fmt.Errorf("failed to download %s: %w", pkg.Name, err)
-			}
+		if err := debian.WriteReleaseFiles(metadataRoot, suite, componentList, archList); err != nil {
+			return fmt.Errorf("failed to write Release files for suite %s: %w", suite, err)
 		}
 	}
 
 	return nil
+}
+
+func formatPackagesFile(packages []debian.Package) string {
+	var sb strings.Builder
+
+	for _, pkg := range packages {
+		writeField := func(name, value string) {
+			if value != "" {
+				sb.WriteString(name)
+				sb.WriteString(": ")
+				sb.WriteString(value)
+				sb.WriteString("\n")
+			}
+		}
+
+		writeField("Package", pkg.Package)
+		writeField("Version", pkg.Version)
+		writeField("Architecture", pkg.Architecture)
+		writeField("Maintainer", pkg.Maintainer)
+		writeField("Section", pkg.Section)
+		writeField("Priority", pkg.Priority)
+		writeField("Filename", pkg.Filename)
+		if pkg.Size > 0 {
+			sb.WriteString("Size: ")
+			sb.WriteString(fmt.Sprintf("%d\n", pkg.Size))
+		}
+		writeField("MD5sum", pkg.MD5sum)
+		writeField("SHA256", pkg.SHA256)
+		writeListField(&sb, "Depends", pkg.Depends)
+		writeListField(&sb, "Pre-Depends", pkg.PreDepends)
+		writeListField(&sb, "Recommends", pkg.Recommends)
+		writeListField(&sb, "Suggests", pkg.Suggests)
+		writeListField(&sb, "Breaks", pkg.Breaks)
+		writeListField(&sb, "Conflicts", pkg.Conflicts)
+		writeListField(&sb, "Provides", pkg.Provides)
+		writeListField(&sb, "Replaces", pkg.Replaces)
+
+		if pkg.Description != "" {
+			sb.WriteString("Description: ")
+			sb.WriteString(pkg.Description)
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+func writeListField(sb *strings.Builder, name string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+
+	sb.WriteString(name)
+	sb.WriteString(": ")
+	sb.WriteString(strings.Join(values, ", "))
+	sb.WriteString("\n")
 }
 
 func loadPackageSpecs(path string) ([]debian.PackageSpec, error) {

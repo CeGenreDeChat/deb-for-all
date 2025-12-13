@@ -1,10 +1,19 @@
 package debian
 
 import (
+	"compress/gzip"
+	"crypto/md5"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"hash"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/ulikunitz/xz"
 )
 
 // Default size estimation values.
@@ -154,7 +163,28 @@ func (m *Mirror) downloadReleaseFile(suite string) error {
 		return fmt.Errorf("failed to write Release file: %w", err)
 	}
 
+	if err := m.downloadInReleaseFile(suite); err != nil {
+		m.logVerbose("Warning: failed to fetch InRelease for %s: %v\n", suite, err)
+	}
+
 	return nil
+}
+
+func (m *Mirror) downloadInReleaseFile(suite string) error {
+	inReleaseURL := fmt.Sprintf("%s/dists/%s/InRelease", strings.TrimSuffix(m.config.BaseURL, "/"), suite)
+	inReleasePath := filepath.Join(m.buildSuitePath(suite), "InRelease")
+
+	tempPkg := &Package{
+		Name:        "inrelease-file",
+		DownloadURL: inReleaseURL,
+		Filename:    "InRelease",
+	}
+
+	if m.config.Verbose {
+		return m.downloader.DownloadWithProgress(tempPkg, inReleasePath, nil)
+	}
+
+	return m.downloader.DownloadSilent(tempPkg, inReleasePath)
 }
 
 // buildReleaseFileContent generates the content for a Release file.
@@ -610,4 +640,243 @@ func (m *Mirror) buildArchPath(suite, component, arch string) string {
 // buildPackagesBaseURL returns the base URL for Packages files.
 func (m *Mirror) buildPackagesBaseURL(suite, component, arch string) string {
 	return fmt.Sprintf("%s/dists/%s/%s/binary-%s/Packages", m.config.BaseURL, suite, component, arch)
+}
+
+// WritePackagesMetadata writes compressed Packages files under dists for a suite.
+func WritePackagesMetadata(metadataRoot, suite string, packagesByComponent map[string]map[string][]Package) error {
+	for component, byArch := range packagesByComponent {
+		for arch, pkgs := range byArch {
+			if len(pkgs) == 0 {
+				continue
+			}
+
+			distsDir := filepath.Join(metadataRoot, suite, component, fmt.Sprintf("binary-%s", arch))
+			if err := os.MkdirAll(distsDir, DirPermission); err != nil {
+				return fmt.Errorf("unable to create metadata directory %s: %w", distsDir, err)
+			}
+
+			content := []byte(formatPackagesFile(pkgs))
+			if err := writeCompressedPackages(distsDir, content); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// WriteReleaseFiles builds unsigned Release and InRelease files for a suite.
+func WriteReleaseFiles(metadataRoot, suite string, components, architectures []string) error {
+	releaseContent, err := buildReleaseContent(metadataRoot, suite, components, architectures)
+	if err != nil {
+		return err
+	}
+
+	releasePath := filepath.Join(metadataRoot, suite, "Release")
+	if err := os.WriteFile(releasePath, []byte(releaseContent), FilePermission); err != nil {
+		return fmt.Errorf("unable to write Release file: %w", err)
+	}
+
+	inReleasePath := filepath.Join(metadataRoot, suite, "InRelease")
+	if err := os.WriteFile(inReleasePath, []byte(releaseContent), FilePermission); err != nil {
+		return fmt.Errorf("unable to write InRelease file: %w", err)
+	}
+
+	return nil
+}
+
+func buildReleaseContent(metadataRoot, suite string, components, architectures []string) (string, error) {
+	var sb strings.Builder
+	now := time.Now().UTC()
+
+	sb.WriteString("Origin: deb-for-all custom\n")
+	sb.WriteString("Label: deb-for-all custom\n")
+	sb.WriteString(fmt.Sprintf("Suite: %s\n", suite))
+	sb.WriteString("Version: 1.0\n")
+	sb.WriteString(fmt.Sprintf("Codename: %s\n", suite))
+	sb.WriteString(fmt.Sprintf("Date: %s\n", now.Format(time.RFC1123Z)))
+	sb.WriteString(fmt.Sprintf("Architectures: %s\n", strings.Join(architectures, " ")))
+	sb.WriteString(fmt.Sprintf("Components: %s\n", strings.Join(components, " ")))
+
+	md5Checksums, sha256Checksums, err := collectPackagesChecksums(metadataRoot, suite, components, architectures)
+	if err != nil {
+		return "", err
+	}
+
+	writeReleaseChecksumSection(&sb, "MD5Sum", md5Checksums)
+	writeReleaseChecksumSection(&sb, "SHA256", sha256Checksums)
+
+	return sb.String(), nil
+}
+
+func collectPackagesChecksums(metadataRoot, suite string, components, architectures []string) ([]FileChecksum, []FileChecksum, error) {
+	md5Entries := make([]FileChecksum, 0)
+	sha256Entries := make([]FileChecksum, 0)
+
+	for _, component := range components {
+		for _, arch := range architectures {
+			for _, filename := range []string{"Packages.gz", "Packages.xz"} {
+				relPath := filepath.Join(component, fmt.Sprintf("binary-%s", arch), filename)
+				absPath := filepath.Join(metadataRoot, suite, relPath)
+				info, err := os.Stat(absPath)
+				if err != nil {
+					continue
+				}
+
+				hashMD5, err := hashFile(absPath, md5.New())
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to hash %s: %w", absPath, err)
+				}
+				hashSHA256, err := hashFile(absPath, sha256.New())
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to hash %s: %w", absPath, err)
+				}
+
+				relUnix := filepath.ToSlash(relPath)
+				md5Entries = append(md5Entries, FileChecksum{Hash: hashMD5, Size: info.Size(), Filename: relUnix})
+				sha256Entries = append(sha256Entries, FileChecksum{Hash: hashSHA256, Size: info.Size(), Filename: relUnix})
+			}
+		}
+	}
+
+	return md5Entries, sha256Entries, nil
+}
+
+func writeReleaseChecksumSection(sb *strings.Builder, section string, entries []FileChecksum) {
+	if len(entries) == 0 {
+		return
+	}
+
+	sb.WriteString(section)
+	sb.WriteString(":\n")
+	for _, entry := range entries {
+		sb.WriteString(fmt.Sprintf(" %s %d %s\n", entry.Hash, entry.Size, entry.Filename))
+	}
+}
+
+func writeCompressedPackages(dir string, content []byte) error {
+	gzipPath := filepath.Join(dir, "Packages.gz")
+	if err := writeGzipFile(gzipPath, content); err != nil {
+		return fmt.Errorf("unable to write %s: %w", gzipPath, err)
+	}
+
+	xzPath := filepath.Join(dir, "Packages.xz")
+	if err := writeXZFile(xzPath, content); err != nil {
+		return fmt.Errorf("unable to write %s: %w", xzPath, err)
+	}
+
+	return nil
+}
+
+func writeGzipFile(path string, content []byte) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := gzip.NewWriter(file)
+	if _, err := writer.Write(content); err != nil {
+		writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	return os.Chmod(path, FilePermission)
+}
+
+func writeXZFile(path string, content []byte) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer, err := xz.NewWriter(file)
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(content); err != nil {
+		writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	return os.Chmod(path, FilePermission)
+}
+
+func formatPackagesFile(packages []Package) string {
+	var sb strings.Builder
+
+	for _, pkg := range packages {
+		writeField := func(name, value string) {
+			if value != "" {
+				sb.WriteString(name)
+				sb.WriteString(": ")
+				sb.WriteString(value)
+				sb.WriteString("\n")
+			}
+		}
+
+		writeField("Package", pkg.Package)
+		writeField("Version", pkg.Version)
+		writeField("Architecture", pkg.Architecture)
+		writeField("Maintainer", pkg.Maintainer)
+		writeField("Section", pkg.Section)
+		writeField("Priority", pkg.Priority)
+		writeField("Filename", pkg.Filename)
+		if pkg.Size > 0 {
+			sb.WriteString("Size: ")
+			sb.WriteString(fmt.Sprintf("%d\n", pkg.Size))
+		}
+		writeField("MD5sum", pkg.MD5sum)
+		writeField("SHA256", pkg.SHA256)
+		writeListField(&sb, "Depends", pkg.Depends)
+		writeListField(&sb, "Pre-Depends", pkg.PreDepends)
+		writeListField(&sb, "Recommends", pkg.Recommends)
+		writeListField(&sb, "Suggests", pkg.Suggests)
+		writeListField(&sb, "Breaks", pkg.Breaks)
+		writeListField(&sb, "Conflicts", pkg.Conflicts)
+		writeListField(&sb, "Provides", pkg.Provides)
+		writeListField(&sb, "Replaces", pkg.Replaces)
+
+		if pkg.Description != "" {
+			sb.WriteString("Description: ")
+			sb.WriteString(pkg.Description)
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+func writeListField(sb *strings.Builder, name string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+
+	sb.WriteString(name)
+	sb.WriteString(": ")
+	sb.WriteString(strings.Join(values, ", "))
+	sb.WriteString("\n")
+}
+
+func hashFile(path string, h hash.Hash) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(h, file); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
