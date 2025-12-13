@@ -123,10 +123,3 @@ func DownloadBinaryPackage(packageName, version, destDir string, silent bool, ke
 
 	return nil
 }
-
-func packageFilename(pkg *debian.Package) string {
-	if pkg.Filename != "" {
-		return pkg.Filename
-	}
-	return fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
-}

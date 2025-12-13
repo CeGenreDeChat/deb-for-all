@@ -187,11 +187,3 @@ func localizeMessage(localizer *i18n.Localizer, messageID, fallback string, data
 
 	return fallback
 }
-
-func packageFilename(pkg *debian.Package) string {
-	if pkg.Filename != "" {
-		return pkg.Filename
-	}
-
-	return fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
-}
