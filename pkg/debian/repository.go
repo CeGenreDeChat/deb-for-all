@@ -2,6 +2,7 @@ package debian
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"crypto/md5"
 	"crypto/sha256"
@@ -417,7 +418,7 @@ func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 	var packages []string
 	var packageMetadata []Package
 
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	buf := make([]byte, 0, packagesInitialAlloc)
 	scanner.Buffer(buf, packagesBufferSize)
 

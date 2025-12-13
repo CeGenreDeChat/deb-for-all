@@ -206,6 +206,9 @@ func (m *Mirror) mirrorComponent(suite, component string) error {
 func (m *Mirror) mirrorArchitecture(suite, component, arch string) error {
 	m.logVerbose("Mirroring architecture: %s/%s/%s\n", suite, component, arch)
 
+	// Limit repository parsing to the current architecture to avoid extra work on each iteration.
+	m.repository.SetArchitectures([]string{arch})
+
 	archPath := m.buildArchPath(suite, component, arch)
 	if err := os.MkdirAll(archPath, DirPermission); err != nil {
 		return fmt.Errorf("failed to create architecture directory: %w", err)
@@ -216,7 +219,7 @@ func (m *Mirror) mirrorArchitecture(suite, component, arch string) error {
 	}
 
 	// Always load package metadata, even if not downloading packages
-	if err := m.loadPackageMetadata(suite, component); err != nil {
+	if err := m.loadPackageMetadata(suite, component, arch); err != nil {
 		return fmt.Errorf("failed to load package metadata: %w", err)
 	}
 
@@ -283,6 +286,7 @@ func (m *Mirror) downloadPackagesForArch(suite, component, arch string) error {
 
 	m.repository.SetDistribution(suite)
 	m.repository.SetSections([]string{component})
+	m.repository.SetArchitectures([]string{arch})
 
 	packages, err := m.repository.FetchPackages()
 	if err != nil {
@@ -492,11 +496,12 @@ func (m *Mirror) verifyComponentArch(suite, component, arch string) {
 }
 
 // loadPackageMetadata loads package metadata without downloading actual packages.
-func (m *Mirror) loadPackageMetadata(suite, component string) error {
+func (m *Mirror) loadPackageMetadata(suite, component, arch string) error {
 	m.logVerbose("Loading package metadata for %s/%s\n", suite, component)
 
 	m.repository.SetDistribution(suite)
 	m.repository.SetSections([]string{component})
+	m.repository.SetArchitectures([]string{arch})
 
 	_, err := m.repository.FetchPackages()
 	if err != nil {
