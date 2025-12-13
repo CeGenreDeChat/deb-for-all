@@ -26,6 +26,10 @@ func initCommands() {
 	}
 	downloadCmd.Flags().StringVarP(&config.PackageName, "package", "p", "", localize("flag.package"))
 	downloadCmd.Flags().StringVar(&config.Version, "version", "", localize("flag.version"))
+	downloadCmd.Flags().StringVarP(&config.BaseURL, "url", "u", "http://deb.debian.org/debian", localize("flag.url"))
+	downloadCmd.Flags().StringVar(&config.Suites, "suites", "bookworm", localize("flag.suites"))
+	downloadCmd.Flags().StringVar(&config.Components, "components", "main", localize("flag.components"))
+	downloadCmd.Flags().StringVar(&config.Architectures, "architectures", "amd64", localize("flag.architectures"))
 	downloadCmd.Flags().BoolVarP(&config.Silent, "silent", "s", false, localize("flag.silent"))
 	downloadCmd.MarkFlagRequired("package")
 	rootCmd.AddCommand(downloadCmd)
@@ -40,6 +44,10 @@ func initCommands() {
 	}
 	downloadSourceCmd.Flags().StringVarP(&config.PackageName, "package", "p", "", localize("flag.package"))
 	downloadSourceCmd.Flags().StringVar(&config.Version, "version", "", localize("flag.version"))
+	downloadSourceCmd.Flags().StringVarP(&config.BaseURL, "url", "u", "http://deb.debian.org/debian", localize("flag.url"))
+	downloadSourceCmd.Flags().StringVar(&config.Suites, "suites", "bookworm", localize("flag.suites"))
+	downloadSourceCmd.Flags().StringVar(&config.Components, "components", "main", localize("flag.components"))
+	downloadSourceCmd.Flags().StringVar(&config.Architectures, "architectures", "source", localize("flag.architectures"))
 	downloadSourceCmd.Flags().BoolVar(&config.OrigOnly, "orig-only", false, localize("flag.orig_only"))
 	downloadSourceCmd.Flags().BoolVarP(&config.Silent, "silent", "s", false, localize("flag.silent"))
 	downloadSourceCmd.MarkFlagRequired("package")

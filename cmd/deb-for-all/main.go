@@ -69,12 +69,15 @@ func localize(key string) string {
 
 func run() error {
 	keyrings := parseList(config.Keyrings)
+	suites := parseList(config.Suites)
+	components := parseList(config.Components)
+	architectures := parseList(config.Architectures)
 
 	switch strings.ToLower(config.Command) {
 	case "download":
-		return commands.DownloadBinaryPackage(config.PackageName, config.Version, config.DestDir, config.Silent, keyrings, config.NoGPGVerify, localizer)
+		return commands.DownloadBinaryPackage(config.PackageName, config.Version, config.BaseURL, suites, components, architectures, config.DestDir, config.Silent, keyrings, config.NoGPGVerify, localizer)
 	case "download-source":
-		return commands.DownloadSourcePackage(config.PackageName, config.Version, config.DestDir, config.OrigOnly, config.Silent, localizer)
+		return commands.DownloadSourcePackage(config.PackageName, config.Version, config.BaseURL, suites, components, architectures, config.DestDir, config.OrigOnly, config.Silent, localizer)
 	case "mirror":
 		return commands.CreateMirror(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.DownloadPkgs, config.Verbose, keyrings, config.NoGPGVerify, localizer)
 	case "update":

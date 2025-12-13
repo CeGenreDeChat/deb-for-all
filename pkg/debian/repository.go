@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -72,6 +74,7 @@ type Repository struct {
 	Architectures   []string
 	Packages        []string
 	PackageMetadata []Package
+	SourceMetadata  []SourcePackage
 	ReleaseInfo     *ReleaseFile
 	VerifyRelease   bool
 	VerifySignature bool
@@ -174,6 +177,326 @@ func (r *Repository) FetchAndCachePackages(cacheDir string) error {
 	}
 
 	return nil
+}
+
+// FetchSources fetches and parses Sources files from the repository.
+// Returns a list of source package names found across all configured sections.
+func (r *Repository) FetchSources() ([]string, error) {
+	if r.VerifyRelease {
+		if err := r.FetchReleaseFile(); err != nil {
+			return nil, fmt.Errorf("erreur lors de la récupération du fichier Release: %w", err)
+		}
+	}
+
+	allSources := make(map[string]bool)
+	metadata := make([]SourcePackage, 0)
+
+	var lastErr error
+	foundAtLeastOne := false
+
+	for _, section := range r.Sections {
+		sources, err := r.fetchSourcesForSection(section)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		for _, sp := range sources {
+			metadata = append(metadata, sp)
+			allSources[sp.Name] = true
+		}
+
+		foundAtLeastOne = true
+	}
+
+	if !foundAtLeastOne {
+		return nil, fmt.Errorf("impossible de récupérer les paquets source depuis la distribution %s: %w", r.Distribution, lastErr)
+	}
+
+	r.SourceMetadata = metadata
+
+	result := make([]string, 0, len(allSources))
+	for name := range allSources {
+		result = append(result, name)
+	}
+
+	sort.Strings(result)
+	return result, nil
+}
+
+func (r *Repository) fetchSourcesForSection(section string) ([]SourcePackage, error) {
+	var lastErr error
+
+	for _, ext := range CompressionExtensions {
+		sourcesURL := r.buildSourcesURLWithDist(r.Distribution, section) + ext
+
+		if !r.checkURLExists(sourcesURL) {
+			lastErr = fmt.Errorf("fichier Sources non accessible: %s", sourcesURL)
+			continue
+		}
+
+		var sources []SourcePackage
+		var err error
+
+		if ext == "" {
+			sources, err = r.downloadAndParseSourcesWithVerification(sourcesURL, section)
+		} else {
+			sources, err = r.downloadAndParseCompressedSourcesWithVerification(sourcesURL, ext, section)
+		}
+
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		return sources, nil
+	}
+
+	return nil, lastErr
+}
+
+func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section string) ([]SourcePackage, error) {
+	resp, err := http.Get(sourcesURL)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la récupération du fichier Sources: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("impossible de récupérer le fichier Sources (HTTP %d)", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier Sources: %w", err)
+	}
+
+	if r.VerifyRelease && r.ReleaseInfo != nil {
+		if err = r.VerifySourcesFileChecksum(section, data); err != nil {
+			return nil, fmt.Errorf("échec de la vérification du checksum: %w", err)
+		}
+	}
+
+	return r.parseSourcesData(data, section)
+}
+
+func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesURL, extension, section string) ([]SourcePackage, error) {
+	resp, err := http.Get(sourcesURL)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la récupération du fichier Sources compressé: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("impossible de récupérer le fichier Sources compressé (HTTP %d)", resp.StatusCode)
+	}
+
+	reader, cleanup, err := r.createDecompressor(resp.Body, extension)
+	if err != nil {
+		return nil, err
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier Sources décompressé: %w", err)
+	}
+
+	if r.VerifyRelease && r.ReleaseInfo != nil {
+		filename := fmt.Sprintf("%s/source/Sources", section)
+		if err = r.verifyDecompressedFileChecksum(filename, data); err != nil {
+			return nil, fmt.Errorf("échec de la vérification du checksum décompressé: %w", err)
+		}
+	}
+
+	return r.parseSourcesData(data, section)
+}
+
+func (r *Repository) parseSourcesData(data []byte, section string) ([]SourcePackage, error) {
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	buf := make([]byte, 0, packagesInitialAlloc)
+	scanner.Buffer(buf, packagesBufferSize)
+
+	var sources []SourcePackage
+	var current *SourcePackage
+	currentField := ""
+	files := make(map[string]*SourceFile)
+
+	finalize := func() {
+		if current == nil {
+			return
+		}
+		r.finalizeSourcePackage(current, files, section)
+		sources = append(sources, *current)
+		current = nil
+		files = make(map[string]*SourceFile)
+		currentField = ""
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmedLine := strings.TrimSpace(line)
+
+		if trimmedLine == "" {
+			finalize()
+			continue
+		}
+
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			if current == nil {
+				continue
+			}
+
+			switch currentField {
+			case "files":
+				r.parseSourceFileEntry(trimmedLine, files, "md5")
+			case "checksums-sha256":
+				r.parseSourceFileEntry(trimmedLine, files, "sha256")
+			case "description":
+				if current.Description == "" {
+					current.Description = trimmedLine
+				} else {
+					current.Description = current.Description + " " + trimmedLine
+				}
+			}
+			continue
+		}
+
+		colonIndex := strings.Index(trimmedLine, ":")
+		if colonIndex == -1 {
+			continue
+		}
+
+		field := strings.ToLower(strings.TrimSpace(trimmedLine[:colonIndex]))
+		value := strings.TrimSpace(trimmedLine[colonIndex+1:])
+		currentField = field
+
+		if field == "package" {
+			finalize()
+			current = &SourcePackage{Name: value}
+			files = make(map[string]*SourceFile)
+			continue
+		}
+
+		if current == nil {
+			continue
+		}
+
+		switch field {
+		case "version":
+			current.Version = value
+		case "maintainer":
+			current.Maintainer = value
+		case "directory":
+			current.Directory = strings.TrimSpace(value)
+		case "description":
+			current.Description = value
+		case "files":
+			if value != "" {
+				r.parseSourceFileEntry(value, files, "md5")
+			}
+		case "checksums-sha256":
+			if value != "" {
+				r.parseSourceFileEntry(value, files, "sha256")
+			}
+		}
+	}
+
+	if current != nil {
+		finalize()
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("erreur lors de la lecture du fichier Sources: %w", err)
+	}
+
+	return sources, nil
+}
+
+func (r *Repository) parseSourceFileEntry(line string, files map[string]*SourceFile, checksumType string) {
+	parts := strings.Fields(line)
+	if len(parts) < 3 {
+		return
+	}
+
+	hash := strings.ToLower(parts[0])
+	size, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return
+	}
+	name := parts[2]
+
+	file, ok := files[name]
+	if !ok {
+		file = &SourceFile{Name: name, Type: detectSourceFileType(name)}
+		files[name] = file
+	} else if file.Type == "" {
+		file.Type = detectSourceFileType(name)
+	}
+
+	if file.Size == 0 {
+		file.Size = size
+	}
+
+	switch checksumType {
+	case "md5":
+		file.MD5Sum = hash
+	case "sha256":
+		file.SHA256Sum = hash
+	}
+}
+
+func (r *Repository) finalizeSourcePackage(pkg *SourcePackage, files map[string]*SourceFile, section string) {
+	if pkg == nil {
+		return
+	}
+
+	if pkg.Directory == "" {
+		pkg.Directory = r.buildSourceDirectory(section, pkg.Name)
+	}
+
+	baseURL := strings.TrimSuffix(r.URL, "/")
+	dir := strings.TrimPrefix(pkg.Directory, "/")
+
+	fileNames := make([]string, 0, len(files))
+	for name := range files {
+		fileNames = append(fileNames, name)
+	}
+	sort.Strings(fileNames)
+
+	for _, name := range fileNames {
+		file := files[name]
+		if file == nil {
+			continue
+		}
+
+		if file.URL == "" {
+			joined := path.Join(dir, file.Name)
+			file.URL = fmt.Sprintf("%s/%s", baseURL, joined)
+		}
+
+		pkg.Files = append(pkg.Files, *file)
+	}
+}
+
+func (r *Repository) buildSourceDirectory(section, packageName string) string {
+	prefix := getPoolPrefix(packageName)
+	return fmt.Sprintf("pool/%s/%s/%s", section, prefix, packageName)
+}
+
+func detectSourceFileType(filename string) string {
+	switch {
+	case strings.HasSuffix(filename, ".dsc"):
+		return "dsc"
+	case strings.Contains(filename, ".orig.tar"):
+		return "orig"
+	case strings.Contains(filename, ".debian.tar"):
+		return "debian"
+	default:
+		return "file"
+	}
 }
 
 func (r *Repository) cachePackagesForSectionArch(cacheDir, section, architecture string) error {
@@ -438,6 +761,12 @@ func (r *Repository) SearchPackageInSources(packageName, version, architecture s
 func (r *Repository) buildPackagesURLWithDist(distribution, section, architecture string) string {
 	baseURL := strings.TrimSuffix(r.URL, "/")
 	return fmt.Sprintf("%s/dists/%s/%s/binary-%s/Packages", baseURL, distribution, section, architecture)
+}
+
+// buildSourcesURLWithDist constructs the URL for a Sources file.
+func (r *Repository) buildSourcesURLWithDist(distribution, section string) string {
+	baseURL := strings.TrimSuffix(r.URL, "/")
+	return fmt.Sprintf("%s/dists/%s/%s/source/Sources", baseURL, distribution, section)
 }
 
 // EnableReleaseVerification enables checksum verification for downloaded files.
@@ -722,24 +1051,101 @@ func (r *Repository) AddArchitecture(architecture string) {
 	r.Architectures = append(r.Architectures, architecture)
 }
 
-// GetPackageMetadata returns the complete metadata for a specific package.
+// GetPackageMetadata returns the metadata for a package without architecture preference.
 func (r *Repository) GetPackageMetadata(packageName string) (*Package, error) {
+	return r.GetPackageMetadataWithArch(packageName, "", nil)
+}
+
+// GetPackageMetadataWithArch returns package metadata honoring version (optional) and
+// architecture order preference. The first matching architecture in archOrder is selected;
+// when archOrder is empty, the repository architectures are used; when both are empty,
+// the first match is returned.
+func (r *Repository) GetPackageMetadataWithArch(packageName, version string, archOrder []string) (*Package, error) {
 	if len(r.PackageMetadata) == 0 {
 		return nil, fmt.Errorf("aucune métadonnée de paquet disponible - appelez d'abord FetchPackages()")
 	}
 
+	matches := make([]*Package, 0)
 	for i := range r.PackageMetadata {
-		if r.PackageMetadata[i].Name == packageName {
-			return &r.PackageMetadata[i], nil
+		p := &r.PackageMetadata[i]
+		if p.Name != packageName {
+			continue
+		}
+		if version != "" && p.Version != version {
+			continue
+		}
+		matches = append(matches, p)
+	}
+
+	if len(matches) == 0 {
+		if version == "" {
+			return nil, fmt.Errorf("paquet '%s' non trouvé dans les métadonnées", packageName)
+		}
+		return nil, fmt.Errorf("version %s introuvable pour le paquet %s", version, packageName)
+	}
+
+	order := archOrder
+	if len(order) == 0 {
+		order = r.Architectures
+	}
+
+	if len(order) == 0 {
+		return matches[0], nil
+	}
+
+	best := matches[0]
+	bestRank := len(order) + 1
+	for _, p := range matches {
+		rank := len(order) + 1
+		for idx, arch := range order {
+			if p.Architecture == arch {
+				rank = idx
+				break
+			}
+		}
+
+		if rank < bestRank {
+			best = p
+			bestRank = rank
 		}
 	}
 
-	return nil, fmt.Errorf("paquet '%s' non trouvé dans les métadonnées", packageName)
+	return best, nil
 }
 
 // GetAllPackageMetadata returns all package metadata.
 func (r *Repository) GetAllPackageMetadata() []Package {
 	return r.PackageMetadata
+}
+
+// GetSourcePackageMetadata returns source package metadata, optionally filtered by version.
+// When version is empty, the first matching entry is returned.
+func (r *Repository) GetSourcePackageMetadata(packageName, version string) (*SourcePackage, error) {
+	if len(r.SourceMetadata) == 0 {
+		return nil, fmt.Errorf("aucune métadonnée de paquet source disponible - appelez d'abord FetchSources()")
+	}
+
+	for i := range r.SourceMetadata {
+		sp := &r.SourceMetadata[i]
+		if sp.Name != packageName {
+			continue
+		}
+
+		if version == "" || sp.Version == version {
+			return sp, nil
+		}
+	}
+
+	if version == "" {
+		return nil, fmt.Errorf("paquet source '%s' non trouvé dans les métadonnées", packageName)
+	}
+
+	return nil, fmt.Errorf("version %s introuvable pour le paquet source %s", version, packageName)
+}
+
+// GetAllSourceMetadata returns all source package metadata.
+func (r *Repository) GetAllSourceMetadata() []SourcePackage {
+	return r.SourceMetadata
 }
 
 // ResolveDependencies returns all packages required for the given specs, following dependency
@@ -1134,6 +1540,30 @@ func (r *Repository) VerifyPackagesFileChecksum(section, architecture string, da
 	filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
 
 	// Prefer SHA256 over MD5
+	for _, checksum := range r.ReleaseInfo.SHA256 {
+		if checksum.Filename == filename {
+			return r.verifyDataChecksum(data, checksum.Hash, "sha256")
+		}
+	}
+
+	for _, checksum := range r.ReleaseInfo.MD5Sum {
+		if checksum.Filename == filename {
+			return r.verifyDataChecksum(data, checksum.Hash, "md5")
+		}
+	}
+
+	return fmt.Errorf("aucun checksum trouvé pour le fichier %s", filename)
+}
+
+// VerifySourcesFileChecksum verifies the checksum of a Sources file against
+// the checksums in the Release file. It prefers SHA256 over MD5.
+func (r *Repository) VerifySourcesFileChecksum(section string, data []byte) error {
+	if r.ReleaseInfo == nil {
+		return fmt.Errorf("informations Release non disponibles - appelez d'abord FetchReleaseFile()")
+	}
+
+	filename := fmt.Sprintf("%s/source/Sources", section)
+
 	for _, checksum := range r.ReleaseInfo.SHA256 {
 		if checksum.Filename == filename {
 			return r.verifyDataChecksum(data, checksum.Hash, "sha256")

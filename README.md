@@ -99,13 +99,22 @@ deb-for-all download -p <package-name> [flags]
 |------|-------|-------------|---------|
 | `--package` | `-p` | Package name (required) | - |
 | `--version` | - | Specific version to download | latest |
+| `--url` | `-u` | Repository URL | `http://deb.debian.org/debian` |
+| `--suites` | - | Suite (first value is used) | `bookworm` |
+| `--components` | - | Components (comma-separated) | `main` |
+| `--architectures` | - | Architectures (comma-separated; first value is selected) | `amd64` |
 | `--dest` | `-d` | Destination directory | `./downloads` |
 | `--silent` | `-s` | Suppress output | `false` |
 | `--verbose` | `-v` | Verbose output | `false` |
 
-**Example:**
+Defaults: repository `http://deb.debian.org/debian`, suite `bookworm`, component `main`, architecture `amd64`, destination `./downloads`.
+
+**Example (fully specified):**
 ```bash
-deb-for-all download -p curl --version 7.88.1-10 -d ./packages
+deb-for-all download \
+   --package curl \
+   --version 7.88.1-10 \
+   --dest ./packages
 ```
 
 #### Download Source Package
@@ -118,14 +127,33 @@ deb-for-all download-source -p <package-name> [flags]
 |------|-------|-------------|---------|
 | `--package` | `-p` | Package name (required) | - |
 | `--version` | - | Specific version to download | latest |
+| `--url` | `-u` | Repository URL | `http://deb.debian.org/debian` |
+| `--suites` | - | Suite (first value is used) | `bookworm` |
+| `--components` | - | Components (comma-separated) | `main` |
+| `--architectures` | - | Architectures (comma-separated; first value is selected) | `source` |
 | `--dest` | `-d` | Destination directory | `./downloads` |
 | `--orig-only` | - | Download only the orig tarball | `false` |
 | `--silent` | `-s` | Suppress output | `false` |
 | `--verbose` | `-v` | Verbose output | `false` |
 
-**Example:**
+Defaults: repository `http://deb.debian.org/debian`, suite `bookworm`, component `main`, destination `./downloads`.
+
+Behavior: fetches Sources metadata first; when `--version` is omitted, the latest available version in the selected suite/component is resolved automatically before downloading referenced files.
+
+**Example (latest version):**
 ```bash
-deb-for-all download-source -p nginx --orig-only -d ./sources
+deb-for-all download-source \
+   --package nginx \
+   --dest ./sources \
+   --orig-only
+```
+
+**Example (specific version):**
+```bash
+deb-for-all download-source \
+   --package hello \
+   --version 2.12-1 \
+   --dest ./sources
 ```
 
 #### Update Package Index Cache

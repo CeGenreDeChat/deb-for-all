@@ -8,7 +8,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func DownloadSourcePackage(packageName, version, destDir string, origOnly, silent bool, localizer *i18n.Localizer) error {
+func DownloadSourcePackage(packageName, version, baseURL string, suites, components, architectures []string, destDir string, origOnly, silent bool, localizer *i18n.Localizer) error {
 	if !silent {
 		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "command.download.start",
@@ -28,35 +28,91 @@ func DownloadSourcePackage(packageName, version, destDir string, origOnly, silen
 		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
 	}
 
-	downloader := debian.NewDownloader()
-
-	sourcePackage := createExampleSourcePackage(packageName, version)
-
-	if !silent {
-		fmt.Printf("Téléchargement du paquet source %s (%s)...\n", packageName, version)
+	if len(suites) == 0 {
+		suites = []string{"bookworm"}
+	}
+	if len(components) == 0 {
+		components = []string{"main"}
+	}
+	if len(architectures) == 0 {
+		architectures = []string{"source"}
+	}
+	if baseURL == "" {
+		baseURL = "http://deb.debian.org/debian"
 	}
 
-	var err error
+	repo := debian.NewRepository(
+		"download-source-repo",
+		baseURL,
+		"Repository for source package download",
+		suites[0],
+		components,
+		architectures,
+	)
+
+	// Signature verification for sources is disabled until CLI flags mirror the binary command.
+	repo.DisableSignatureVerification()
+
+	if !silent {
+		fmt.Printf("Recherche du paquet source %s", packageName)
+		if version != "" {
+			fmt.Printf(" version %s", version)
+		}
+		fmt.Println("...")
+	}
+
+	if _, err := repo.FetchSources(); err != nil {
+		return fmt.Errorf("erreur lors de la récupération des paquets source: %w", err)
+	}
+
+	sourcePackage, err := repo.GetSourcePackageMetadata(packageName, version)
+	if err != nil {
+		return fmt.Errorf("erreur lors de la récupération des métadonnées pour le paquet source %s: %w", packageName, err)
+	}
+
+	if version == "" {
+		version = sourcePackage.Version
+	}
+
+	if !silent {
+		fmt.Printf("Téléchargement du paquet source %s version %s...\n", sourcePackage.Name, sourcePackage.Version)
+		fmt.Printf("Répertoire pool: %s\n", sourcePackage.Directory)
+	}
+
+	downloadFn := func(sp *debian.SourcePackage) error {
+		downloader := debian.NewDownloader()
+		if silent {
+			return downloader.DownloadSourcePackageSilent(sp, destDir)
+		}
+		return downloader.DownloadSourcePackageWithProgress(sp, destDir, func(filename string, downloaded, total int64) {
+			if total <= 0 {
+				return
+			}
+			percentage := float64(downloaded) / float64(total) * 100
+			fmt.Printf("\r%s: %.1f%% (%d/%d bytes)", filename, percentage, downloaded, total)
+		})
+	}
+
+	var downloadErr error
 	if origOnly {
+		orig := sourcePackage.GetOrigTarball()
+		if orig == nil {
+			return fmt.Errorf("aucun tarball original trouvé pour %s", packageName)
+		}
+
 		if !silent {
 			fmt.Println("Téléchargement du tarball original uniquement...")
 		}
-		err = downloader.DownloadOrigTarball(sourcePackage, destDir)
+
+		single := *sourcePackage
+		single.Files = []debian.SourceFile{*orig}
+		downloadErr = downloadFn(&single)
 	} else {
-		if silent {
-			err = downloader.DownloadSourcePackageSilent(sourcePackage, destDir)
-		} else {
-			err = downloader.DownloadSourcePackageWithProgress(sourcePackage, destDir, func(filename string, downloaded, total int64) {
-				if total > 0 {
-					percentage := float64(downloaded) / float64(total) * 100
-					fmt.Printf("\r%s: %.1f%% (%d/%d bytes)", filename, percentage, downloaded, total)
-				}
-			})
-		}
+		downloadErr = downloadFn(sourcePackage)
 	}
 
-	if err != nil {
-		return fmt.Errorf("erreur lors du téléchargement: %w", err)
+	if downloadErr != nil {
+		return fmt.Errorf("erreur lors du téléchargement: %w", downloadErr)
 	}
 
 	if !silent {
@@ -64,79 +120,4 @@ func DownloadSourcePackage(packageName, version, destDir string, origOnly, silen
 	}
 
 	return nil
-}
-
-func createExampleSourcePackage(packageName, version string) *debian.SourcePackage {
-	sourcePackage := debian.NewSourcePackage(
-		packageName,
-		version,
-		"Example Maintainer <maintainer@example.com>",
-		fmt.Sprintf("Source package for %s", packageName),
-		fmt.Sprintf("pool/main/%s/%s", string(packageName[0]), packageName),
-	)
-
-	baseURL := "http://deb.debian.org/debian/pool/main"
-
-	switch packageName {
-	case "hello":
-		if version == "" {
-			version = "2.10-2"
-		}
-		sourcePackage.AddFile(
-			fmt.Sprintf("hello_%s.dsc", version),
-			fmt.Sprintf("%s/h/hello/hello_%s.dsc", baseURL, version),
-			1950, "", "", "dsc",
-		)
-		sourcePackage.AddFile(
-			"hello_2.10.orig.tar.gz",
-			fmt.Sprintf("%s/h/hello/hello_2.10.orig.tar.gz", baseURL),
-			725946, "", "", "orig",
-		)
-		sourcePackage.AddFile(
-			fmt.Sprintf("hello_%s.debian.tar.xz", version),
-			fmt.Sprintf("%s/h/hello/hello_%s.debian.tar.xz", baseURL, version),
-			7124, "", "", "debian",
-		)
-
-	case "curl":
-		if version == "" {
-			version = "7.74.0-1.3+deb11u7"
-		}
-		sourcePackage.AddFile(
-			fmt.Sprintf("curl_%s.dsc", version),
-			fmt.Sprintf("%s/c/curl/curl_%s.dsc", baseURL, version),
-			2356, "", "", "dsc",
-		)
-		sourcePackage.AddFile(
-			"curl_7.74.0.orig.tar.gz",
-			fmt.Sprintf("%s/c/curl/curl_7.74.0.orig.tar.gz", baseURL),
-			4194863, "", "", "orig",
-		)
-		sourcePackage.AddFile(
-			fmt.Sprintf("curl_%s.debian.tar.xz", version),
-			fmt.Sprintf("%s/c/curl/curl_%s.debian.tar.xz", baseURL, version),
-			35684, "", "", "debian",
-		)
-
-	default:
-		if version == "" {
-			version = "1.0-1"
-		}
-		sourcePackage.AddFile(
-			fmt.Sprintf("%s_%s.dsc", packageName, version),
-			fmt.Sprintf("%s/%s/%s/%s_%s.dsc", baseURL, string(packageName[0]), packageName, packageName, version),
-			1000, "", "", "dsc",
-		)
-		sourcePackage.AddFile(
-			fmt.Sprintf("%s_1.0.orig.tar.gz", packageName),
-			fmt.Sprintf("%s/%s/%s/%s_1.0.orig.tar.gz", baseURL, string(packageName[0]), packageName, packageName),
-			10000, "", "", "orig",
-		)
-		sourcePackage.AddFile(
-			fmt.Sprintf("%s_%s.debian.tar.xz", packageName, version),
-			fmt.Sprintf("%s/%s/%s/%s_%s.debian.tar.xz", baseURL, string(packageName[0]), packageName, packageName, version),
-			5000, "", "", "debian",
-		)
-	}
-	return sourcePackage
 }

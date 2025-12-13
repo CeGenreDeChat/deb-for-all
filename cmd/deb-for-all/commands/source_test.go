@@ -16,7 +16,18 @@ func TestDownloadSourcePackageOrigOnlyIntegration(t *testing.T) {
 	destDir := t.TempDir()
 	defer silenceStdoutSource(t)()
 
-	if err := DownloadSourcePackage("hello", "", destDir, true, true, localizer); err != nil {
+	if err := DownloadSourcePackage(
+		"hello",
+		"",
+		"http://deb.debian.org/debian",
+		[]string{"bookworm"},
+		[]string{"main"},
+		[]string{"source"},
+		destDir,
+		true,
+		true,
+		localizer,
+	); err != nil {
 		t.Fatalf("download source (orig-only) failed: %v", err)
 	}
 

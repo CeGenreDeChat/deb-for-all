@@ -9,7 +9,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func DownloadBinaryPackage(packageName, version, destDir string, silent bool, keyrings []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
+func DownloadBinaryPackage(packageName, version, baseURL string, suites, components, architectures []string, destDir string, silent bool, keyrings []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
 	if !silent {
 		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "command.download.start",
@@ -31,14 +31,26 @@ func DownloadBinaryPackage(packageName, version, destDir string, silent bool, ke
 		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
 	}
 
-	// Create repository to search for the package
+	if len(suites) == 0 {
+		suites = []string{"bookworm"}
+	}
+	if len(components) == 0 {
+		components = []string{"main"}
+	}
+	if len(architectures) == 0 {
+		architectures = []string{"amd64"}
+	}
+	if baseURL == "" {
+		baseURL = "http://deb.debian.org/debian"
+	}
+
 	repo := debian.NewRepository(
 		"download-repo",
-		"http://deb.debian.org/debian",
+		baseURL,
 		"Repository for package download",
-		"bookworm",        // default suite
-		[]string{"main"},  // default component
-		[]string{"amd64"}, // default architecture
+		suites[0],
+		components,
+		architectures,
 	)
 
 	repo.SetKeyringPaths(keyrings)
@@ -58,19 +70,9 @@ func DownloadBinaryPackage(packageName, version, destDir string, silent bool, ke
 		return fmt.Errorf("erreur lors de la récupération des paquets: %w", err)
 	}
 
-	var pkgMetadata *debian.Package
-
-	// Get package metadata
-	if pkgMetadata, err = repo.GetPackageMetadata(packageName); err != nil {
+	pkgMetadata, err := repo.GetPackageMetadataWithArch(packageName, version, architectures)
+	if err != nil {
 		return fmt.Errorf("erreur lors de la récupération des métadonnées pour le paquet %s: %w", packageName, err)
-	} else if pkgMetadata == nil {
-		return fmt.Errorf("impossible de récupérer les métadonnées pour le paquet %s", packageName)
-	}
-
-	// Filter by version if specified
-	if version != "" && pkgMetadata.Version != version {
-		return fmt.Errorf("version %s non trouvée pour le paquet %s (version disponible: %s)",
-			version, packageName, pkgMetadata.Version)
 	}
 
 	if !silent {
