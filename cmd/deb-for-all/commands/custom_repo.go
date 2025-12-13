@@ -91,6 +91,19 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 			if targetDir == poolDir || pkg.Section == "" {
 				targetDir = filepath.Join(poolDir, "main")
 			}
+
+			destPath := filepath.Join(targetDir, packageFilename(&pkg))
+			skip, err := downloader.ShouldSkipDownload(&pkg, destPath)
+			if err != nil {
+				return fmt.Errorf("failed to check existing file for %s: %w", pkg.Name, err)
+			}
+			if skip {
+				if verbose {
+					fmt.Printf("Suite %s: skipping %s (already downloaded, checksum verified)\n", suite, pkg.Name)
+				}
+				continue
+			}
+
 			if err := downloader.DownloadToDir(&pkg, targetDir); err != nil {
 				return fmt.Errorf("failed to download %s: %w", pkg.Name, err)
 			}
@@ -173,4 +186,12 @@ func localizeMessage(localizer *i18n.Localizer, messageID, fallback string, data
 	}
 
 	return fallback
+}
+
+func packageFilename(pkg *debian.Package) string {
+	if pkg.Filename != "" {
+		return pkg.Filename
+	}
+
+	return fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
 }

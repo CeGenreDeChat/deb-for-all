@@ -335,6 +335,16 @@ func (m *Mirror) downloadPackageByName(packageName, component, arch string) erro
 		pkg.DownloadURL = fmt.Sprintf("%s/pool/%s/%s/%s/%s", m.config.BaseURL, component, poolPrefix, sourceName, pkg.Filename)
 	}
 
+	destPath := filepath.Join(packageDir, getPackageFilename(pkg))
+	skip, err := m.downloader.ShouldSkipDownload(pkg, destPath)
+	if err != nil {
+		return fmt.Errorf("failed to check existing file for %s: %w", pkg.Name, err)
+	}
+	if skip {
+		m.logVerbose("Skipping download for %s (existing file matches checksum)\n", pkg.Name)
+		return nil
+	}
+
 	fmt.Printf("Downloading %s to %s\n", pkg.DownloadURL, packageDir)
 
 	return m.downloader.DownloadToDir(pkg, packageDir)

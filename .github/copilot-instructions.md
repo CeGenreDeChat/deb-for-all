@@ -13,6 +13,6 @@
 - When adding features: extend `Package` + parser in [pkg/debian/package.go](pkg/debian/package.go) and [pkg/debian/repository.go](pkg/debian/repository.go); wire new CLI flags in [cmd/deb-for-all/main.go](cmd/deb-for-all/main.go) and commands; update both locale files for new strings; keep examples in sync.
 - External deps are minimal (standard lib + `github.com/ulikunitz/xz`); avoid introducing new ones without strong reason.
 - Cross-platform: Makefile already handles `.exe`; keep paths OS-agnostic and PowerShell-friendly in docs/scripts.
-- Agent requirement: after any code/doc change, write a temp summary file in `%TEMP%/agent-changes-summary.txt` (or `os.TempDir()`) with a one-line title and short paragraph, and print its full path for later commit drafting. Ask the user whether the previous content should be removed before writing the summary.
+- Agent requirement: after any code/doc change, write a temp summary file in `%TEMP%/agent-changes-summary.txt` (or `os.TempDir()`) with a one-line title and short paragraph, and print its full path for later commit drafting ath the end of the task. If the file exists, append to it.
 - Option handling: when introducing or using CLI flags/options, ensure user-facing errors are produced for unknown or misspelled option values (e.g., dependency kinds, suites/components/architectures) and honor localization where applicable.
 - Ask for clarity if requirements conflict; prefer improving existing helpers over duplicating logic.

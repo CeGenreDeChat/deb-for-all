@@ -3,6 +3,7 @@ package debian
 import (
 	"crypto/md5"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -210,6 +211,38 @@ func (d *Downloader) verifyChecksum(filePath, expectedChecksum, checksumType str
 
 	fmt.Printf("Somme de contrôle %s vérifiée avec succès\n", checksumType)
 	return nil
+}
+
+// ShouldSkipDownload checks if destPath already contains the expected file for the given package.
+// It returns true when the file exists and its checksum matches the package metadata.
+func (d *Downloader) ShouldSkipDownload(pkg *Package, destPath string) (bool, error) {
+	info, err := os.Stat(destPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("unable to stat existing file %s: %w", destPath, err)
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("existing path %s is not a regular file", destPath)
+	}
+
+	expectedChecksum := strings.ToLower(pkg.SHA256)
+	checksumType := "sha256"
+	if expectedChecksum == "" {
+		expectedChecksum = strings.ToLower(pkg.MD5sum)
+		checksumType = "md5"
+	}
+
+	if expectedChecksum == "" {
+		return false, nil
+	}
+
+	if err := d.verifyChecksum(destPath, expectedChecksum, checksumType); err != nil {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // downloadJob represents a download task for concurrent processing.

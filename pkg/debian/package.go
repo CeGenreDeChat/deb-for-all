@@ -231,8 +231,18 @@ func (sp *SourcePackage) downloadSingleFile(downloader *Downloader, file SourceF
 		fmt.Printf("Téléchargement de %s...\n", file.Name)
 	}
 
+	skip, err := shouldSkipSourceFile(downloader, file, destPath)
+	if err != nil {
+		return fmt.Errorf("unable to check existing file %s: %w", file.Name, err)
+	}
+	if skip {
+		if verbose {
+			fmt.Printf("Skip %s (already present, checksum verified)\n", file.Name)
+		}
+		return nil
+	}
+
 	// Use downloadToFile directly instead of creating a temp Package
-	var err error
 	if progressCallback != nil {
 		err = downloader.downloadToFile(file.URL, destPath, func(downloaded, total int64) {
 			progressCallback(file.Name, downloaded, total)
@@ -257,6 +267,36 @@ func (sp *SourcePackage) downloadSingleFile(downloader *Downloader, file SourceF
 	}
 
 	return nil
+}
+
+func shouldSkipSourceFile(downloader *Downloader, file SourceFile, destPath string) (bool, error) {
+	info, err := os.Stat(destPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("existing path %s is not a regular file", destPath)
+	}
+
+	checksum := strings.ToLower(file.SHA256Sum)
+	checksumType := "sha256"
+	if checksum == "" {
+		checksum = strings.ToLower(file.MD5Sum)
+		checksumType = "md5"
+	}
+
+	if checksum == "" {
+		return false, nil
+	}
+
+	if err := downloader.verifyChecksum(destPath, checksum, checksumType); err != nil {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // String returns a string representation of the source package.
