@@ -37,3 +37,8 @@
 
 # Errors
 "error.unknown_command" = "Commande inconnue: {{.Command}}"
+"error.validation.unknown_components" = "Composants inconnus: {{.Unknown}} (disponibles: {{.Available}})"
+"error.validation.unknown_architectures" = "Architectures inconnues: {{.Unknown}} (disponibles: {{.Available}})"
+"error.validation.fetch_release" = "Impossible de récupérer le fichier Release"
+"error.validation.release_unavailable" = "Informations Release indisponibles pour la validation"
+"error.custom_repo.unknown_dependency_kind" = "Type de dépendance inconnu '{{.Kind}}' (autorisés: {{.Allowed}})"

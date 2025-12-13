@@ -24,7 +24,7 @@ type xmlPackageEntry struct {
 // resolves dependencies (with optional exclusions), and downloads the resulting packages.
 func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings []string, skipGPGVerify, verbose bool, localizer *i18n.Localizer) error {
 	if packagesXML == "" {
-		return fmt.Errorf("le fichier XML des paquets est requis")
+		return fmt.Errorf("packages XML file is required")
 	}
 
 	packageSpecs, err := loadPackageSpecs(packagesXML)
@@ -32,9 +32,9 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 		return err
 	}
 
-	excludeSet, err := parseExcludeDeps(excludeDeps)
+	excludeSet, err := parseExcludeDeps(excludeDeps, localizer)
 	if err != nil {
-		return fmt.Errorf("valeur --exclude-deps invalide: %w", err)
+		return fmt.Errorf("invalid --exclude-deps value: %w", err)
 	}
 
 	suiteList := splitAndTrim(suites)
@@ -42,17 +42,17 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 	archList := splitAndTrim(architectures)
 
 	if len(suiteList) == 0 {
-		return fmt.Errorf("au moins une suite est requise")
+		return fmt.Errorf("at least one suite is required")
 	}
 	if len(componentList) == 0 {
-		return fmt.Errorf("au moins un composant est requis")
+		return fmt.Errorf("at least one component is required")
 	}
 	if len(archList) == 0 {
-		return fmt.Errorf("au moins une architecture est requise")
+		return fmt.Errorf("at least one architecture is required")
 	}
 
 	if err := os.MkdirAll(destDir, debian.DirPermission); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
+		return fmt.Errorf("unable to create destination directory: %w", err)
 	}
 
 	for _, suite := range suiteList {
@@ -62,21 +62,25 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 			repo.DisableSignatureVerification()
 		}
 
+		if err := validateComponentsAndArchitectures(repo, suite, componentList, archList, localizer); err != nil {
+			return err
+		}
+
 		if verbose {
-			fmt.Printf("Suite %s: récupération des métadonnées...\n", suite)
+			fmt.Printf("Suite %s: fetching metadata...\n", suite)
 		}
 
 		if _, err := repo.FetchPackages(); err != nil {
-			return fmt.Errorf("erreur lors de la récupération des paquets pour %s: %w", suite, err)
+			return fmt.Errorf("failed to fetch packages for %s: %w", suite, err)
 		}
 
 		resolved, err := repo.ResolveDependencies(packageSpecs, excludeSet)
 		if err != nil {
-			return fmt.Errorf("erreur lors de la résolution des dépendances pour %s: %w", suite, err)
+			return fmt.Errorf("failed to resolve dependencies for %s: %w", suite, err)
 		}
 
 		if verbose {
-			fmt.Printf("Suite %s: %d paquets à télécharger\n", suite, len(resolved))
+			fmt.Printf("Suite %s: %d packages to download\n", suite, len(resolved))
 		}
 
 		downloader := debian.NewDownloader()
@@ -88,7 +92,7 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 				targetDir = filepath.Join(poolDir, "main")
 			}
 			if err := downloader.DownloadToDir(&pkg, targetDir); err != nil {
-				return fmt.Errorf("erreur lors du téléchargement de %s: %w", pkg.Name, err)
+				return fmt.Errorf("failed to download %s: %w", pkg.Name, err)
 			}
 		}
 	}
@@ -99,12 +103,12 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 func loadPackageSpecs(path string) ([]debian.PackageSpec, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("impossible de lire le fichier XML: %w", err)
+		return nil, fmt.Errorf("unable to read XML file: %w", err)
 	}
 
 	var list xmlPackageList
 	if err := xml.Unmarshal(data, &list); err != nil {
-		return nil, fmt.Errorf("format XML invalide: %w", err)
+		return nil, fmt.Errorf("invalid XML format: %w", err)
 	}
 
 	specs := make([]debian.PackageSpec, 0, len(list.Packages))
@@ -117,7 +121,7 @@ func loadPackageSpecs(path string) ([]debian.PackageSpec, error) {
 	}
 
 	if len(specs) == 0 {
-		return nil, fmt.Errorf("aucun paquet valide trouvé dans le XML")
+		return nil, fmt.Errorf("no valid package found in XML")
 	}
 
 	return specs, nil
@@ -134,7 +138,7 @@ var (
 	}
 )
 
-func parseExcludeDeps(value string) (map[string]bool, error) {
+func parseExcludeDeps(value string, localizer *i18n.Localizer) (map[string]bool, error) {
 	set := make(map[string]bool)
 
 	for _, item := range strings.Split(strings.TrimSpace(value), ",") {
@@ -144,11 +148,29 @@ func parseExcludeDeps(value string) (map[string]bool, error) {
 		}
 
 		if _, ok := allowedExcludeDepKindsSet[trimmed]; !ok {
-			return nil, fmt.Errorf("type de dépendance inconnu '%s' (valeurs acceptées: %s)", trimmed, strings.Join(allowedExcludeDepKinds, ", "))
+			fallback := fmt.Sprintf("unknown dependency kind '%s' (allowed: %s)", trimmed, strings.Join(allowedExcludeDepKinds, ", "))
+			msg := localizeMessage(localizer, "error.custom_repo.unknown_dependency_kind", fallback, map[string]any{
+				"Kind":    trimmed,
+				"Allowed": strings.Join(allowedExcludeDepKinds, ", "),
+			})
+			return nil, fmt.Errorf("%s", msg)
 		}
 
 		set[trimmed] = true
 	}
 
 	return set, nil
+}
+
+func localizeMessage(localizer *i18n.Localizer, messageID, fallback string, data map[string]any) string {
+	if localizer == nil {
+		return fallback
+	}
+
+	msg, err := localizer.Localize(&i18n.LocalizeConfig{MessageID: messageID, TemplateData: data})
+	if err == nil && msg != "" {
+		return msg
+	}
+
+	return fallback
 }

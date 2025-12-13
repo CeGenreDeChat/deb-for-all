@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/CeGenreDeChat/deb-for-all/pkg/debian"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
@@ -28,20 +27,18 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 		}))
 	}
 
-	// Parse comma-separated values
-	suiteList := strings.Split(strings.TrimSpace(suites), ",")
-	componentList := strings.Split(strings.TrimSpace(components), ",")
-	architectureList := strings.Split(strings.TrimSpace(architectures), ",")
+	suiteList := splitAndTrim(suites)
+	componentList := splitAndTrim(components)
+	architectureList := splitAndTrim(architectures)
 
-	// Trim spaces from each element
-	for i, suite := range suiteList {
-		suiteList[i] = strings.TrimSpace(suite)
+	if len(suiteList) == 0 {
+		return fmt.Errorf("at least one suite is required")
 	}
-	for i, component := range componentList {
-		componentList[i] = strings.TrimSpace(component)
+	if len(componentList) == 0 {
+		return fmt.Errorf("at least one component is required")
 	}
-	for i, arch := range architectureList {
-		architectureList[i] = strings.TrimSpace(arch)
+	if len(architectureList) == 0 {
+		return fmt.Errorf("at least one architecture is required")
 	}
 
 	// Create mirror configuration
@@ -56,14 +53,26 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 		SkipGPGVerify:    skipGPGVerify,
 	}
 
+	for _, suite := range suiteList {
+		repo := debian.NewRepository("mirror-validate"+suite, baseURL, "mirror validation", suite, componentList, architectureList)
+		repo.SetKeyringPaths(keyrings)
+		if skipGPGVerify {
+			repo.DisableSignatureVerification()
+		}
+
+		if err := validateComponentsAndArchitectures(repo, suite, componentList, architectureList, localizer); err != nil {
+			return fmt.Errorf("invalid suite %s: %w", suite, err)
+		}
+	}
+
 	// Validate configuration
 	if err := config.Validate(); err != nil {
-		return fmt.Errorf("configuration invalide: %w", err)
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	// Create destination directory
 	if err := os.MkdirAll(destDir, debian.DirPermission); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
+		return fmt.Errorf("unable to create destination directory: %w", err)
 	}
 
 	// Create mirror
@@ -98,7 +107,7 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 	}
 
 	if err := mirror.Clone(); err != nil {
-		return fmt.Errorf("erreur lors de la création du miroir: %w", err)
+		return fmt.Errorf("failed to create mirror: %w", err)
 	}
 
 	if verbose {

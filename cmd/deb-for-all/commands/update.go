@@ -43,6 +43,10 @@ func UpdateCache(baseURL, suites, components, architectures, cacheDir string, ve
 			repo.DisableSignatureVerification()
 		}
 
+		if err := validateComponentsAndArchitectures(repo, suite, componentList, architectureList, localizer); err != nil {
+			return fmt.Errorf("validation failed for suite %s: %w", suite, err)
+		}
+
 		if verbose {
 			fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
 				MessageID: "command.update.suite",
