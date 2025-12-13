@@ -79,17 +79,33 @@ func DownloadBinaryPackage(packageName, version, destDir string, silent bool, ke
 		fmt.Printf("Taille: %d bytes\n", pkgMetadata.Size)
 	}
 
-	filepath := filepath.Join(destDir, pkgMetadata.Name+"_"+pkgMetadata.Version+"_"+pkgMetadata.Architecture+".deb")
+	destPath := filepath.Join(destDir, packageFilename(pkgMetadata))
 
 	// Create downloader
 	downloader := debian.NewDownloader()
 
+	skip, err := downloader.ShouldSkipDownload(pkgMetadata, destPath)
+	if err != nil {
+		return fmt.Errorf("failed to check existing file for %s: %w", pkgMetadata.Name, err)
+	}
+	if skip {
+		if !silent {
+			fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
+				MessageID: "command.download.skip_existing",
+				TemplateData: map[string]any{
+					"Package": pkgMetadata.Name,
+				},
+			}))
+		}
+		return nil
+	}
+
 	// Download the package
 	if silent {
-		err = downloader.DownloadSilent(pkgMetadata, filepath)
+		err = downloader.DownloadSilent(pkgMetadata, destPath)
 	} else {
-		fmt.Printf("Téléchargement vers %s...\n", filepath)
-		err = downloader.DownloadWithProgress(pkgMetadata, filepath, func(downloaded, total int64) {
+		fmt.Printf("Téléchargement vers %s...\n", destPath)
+		err = downloader.DownloadWithProgress(pkgMetadata, destPath, func(downloaded, total int64) {
 			if total > 0 {
 				percentage := float64(downloaded) / float64(total) * 100
 				fmt.Printf("\rTéléchargement: %.1f%% (%d/%d bytes)", percentage, downloaded, total)
@@ -106,4 +122,11 @@ func DownloadBinaryPackage(packageName, version, destDir string, silent bool, ke
 	}
 
 	return nil
+}
+
+func packageFilename(pkg *debian.Package) string {
+	if pkg.Filename != "" {
+		return pkg.Filename
+	}
+	return fmt.Sprintf("%s_%s_%s.deb", pkg.Name, pkg.Version, pkg.Architecture)
 }

@@ -42,3 +42,4 @@
 "error.validation.fetch_release" = "Failed to fetch Release file"
 "error.validation.release_unavailable" = "Release information unavailable for validation"
 "error.custom_repo.unknown_dependency_kind" = "Unknown dependency kind '{{.Kind}}' (allowed: {{.Allowed}})"
+"command.download.skip_existing" = "✓ Package {{.Package}} already present with valid checksum; skipping download"
