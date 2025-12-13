@@ -305,14 +305,66 @@ func (m *Mirror) downloadPackagesForArch(suite, component, arch string) error {
 		return fmt.Errorf("failed to create pool directory: %w", err)
 	}
 
+	packagesToDownload := make([]*Package, 0, len(packages))
 	for _, packageName := range packages {
-		if err := m.downloadPackageByName(packageName, component, arch); err != nil {
-			m.logVerbose("Warning: failed to download package %s: %v\n", packageName, err)
-			continue // Continue with other packages
+		pkg := m.preparePackageForDownload(packageName, component, arch)
+		if pkg == nil {
+			continue
 		}
+
+		destPath := filepath.Join(m.basePath, filepath.FromSlash(pkg.Filename))
+		skip, err := m.downloader.ShouldSkipDownload(pkg, destPath)
+		if err != nil {
+			m.logVerbose("Warning: unable to check existing file for %s: %v\n", pkg.Name, err)
+		}
+		if skip {
+			m.logVerbose("Skipping download for %s (existing file matches checksum)\n", pkg.Name)
+			continue
+		}
+
+		packagesToDownload = append(packagesToDownload, pkg)
+	}
+
+	if len(packagesToDownload) == 0 {
+		return nil
+	}
+
+	errs := m.downloader.DownloadMultiple(packagesToDownload, m.basePath, 0)
+	for _, dlErr := range errs {
+		m.logVerbose("Warning: %v\n", dlErr)
 	}
 
 	return nil
+}
+
+// preparePackageForDownload ensures package metadata and paths are ready for parallel download.
+func (m *Mirror) preparePackageForDownload(packageName, component, arch string) *Package {
+	pkg := m.getPackageMetadataOrFallback(packageName, arch)
+	if pkg == nil {
+		return nil
+	}
+
+	if pkg.Architecture == "" {
+		pkg.Architecture = arch
+	}
+
+	sourceName := pkg.GetSourceName()
+	poolPrefix := getPoolPrefix(sourceName)
+
+	fileName := filepath.Base(pkg.Filename)
+	if fileName == "" {
+		fileName = fmt.Sprintf("%s_%s.deb", pkg.Name, arch)
+	}
+
+	if pkg.Filename == "" || !strings.HasPrefix(pkg.Filename, "pool/") {
+		pkg.Filename = filepath.ToSlash(filepath.Join("pool", component, poolPrefix, sourceName, fileName))
+	}
+
+	if pkg.DownloadURL == "" {
+		pkg.DownloadURL = fmt.Sprintf("%s/%s", strings.TrimSuffix(m.config.BaseURL, "/"), pkg.Filename)
+	}
+
+	return pkg
 }
 
 // downloadPackageByName downloads a single package by name.
