@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -73,18 +74,21 @@ type Repository struct {
 	PackageMetadata []Package
 	ReleaseInfo     *ReleaseFile
 	VerifyRelease   bool
+	VerifySignature bool
+	KeyringPaths    []string
 }
 
 // NewRepository creates a new Repository instance with the specified configuration.
 func NewRepository(name, url, description, distribution string, sections, architectures []string) *Repository {
 	return &Repository{
-		Name:          name,
-		URL:           url,
-		Description:   description,
-		Distribution:  distribution,
-		Sections:      sections,
-		Architectures: architectures,
-		VerifyRelease: true,
+		Name:            name,
+		URL:             url,
+		Description:     description,
+		Distribution:    distribution,
+		Sections:        sections,
+		Architectures:   architectures,
+		VerifyRelease:   true,
+		VerifySignature: true,
 	}
 }
 
@@ -440,6 +444,21 @@ func (r *Repository) DisableReleaseVerification() {
 	r.VerifyRelease = false
 }
 
+// EnableSignatureVerification enables GPG verification for Release/InRelease files.
+func (r *Repository) EnableSignatureVerification() {
+	r.VerifySignature = true
+}
+
+// DisableSignatureVerification disables GPG verification for Release/InRelease files.
+func (r *Repository) DisableSignatureVerification() {
+	r.VerifySignature = false
+}
+
+// SetKeyringPaths sets the keyring file paths used for signature verification.
+func (r *Repository) SetKeyringPaths(paths []string) {
+	r.KeyringPaths = paths
+}
+
 // GetReleaseInfo returns the parsed Release file information.
 func (r *Repository) GetReleaseInfo() *ReleaseFile {
 	return r.ReleaseInfo
@@ -719,21 +738,17 @@ func (r *Repository) GetAllPackageMetadata() []Package {
 
 // FetchReleaseFile downloads and parses the Release file from the repository.
 func (r *Repository) FetchReleaseFile() error {
-	releaseURL := r.buildReleaseURL()
+	var releaseData []byte
+	var err error
 
-	resp, err := http.Get(releaseURL)
-	if err != nil {
-		return fmt.Errorf("erreur lors de la récupération du fichier Release: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("impossible de récupérer le fichier Release (HTTP %d)", resp.StatusCode)
+	if r.VerifySignature {
+		releaseData, err = r.fetchSignedRelease()
+	} else {
+		releaseData, err = r.fetchUnsignedRelease()
 	}
 
-	releaseData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("erreur lors de la lecture du fichier Release: %w", err)
+		return err
 	}
 
 	releaseInfo, err := r.parseReleaseFile(string(releaseData))
@@ -749,6 +764,52 @@ func (r *Repository) FetchReleaseFile() error {
 func (r *Repository) buildReleaseURL() string {
 	baseURL := strings.TrimSuffix(r.URL, "/")
 	return fmt.Sprintf("%s/dists/%s/Release", baseURL, r.Distribution)
+}
+
+// buildInReleaseURL constructs the URL for the InRelease file.
+func (r *Repository) buildInReleaseURL() string {
+	baseURL := strings.TrimSuffix(r.URL, "/")
+	return fmt.Sprintf("%s/dists/%s/InRelease", baseURL, r.Distribution)
+}
+
+// fetchUnsignedRelease downloads the Release file without signature verification.
+func (r *Repository) fetchUnsignedRelease() ([]byte, error) {
+	return r.fetchURL(r.buildReleaseURL())
+}
+
+// fetchSignedRelease downloads and verifies InRelease or Release+Release.gpg.
+func (r *Repository) fetchSignedRelease() ([]byte, error) {
+	// Prefer InRelease (clearsigned)
+	inReleaseURL := r.buildInReleaseURL()
+	inReleaseData, err := r.fetchURL(inReleaseURL)
+	if err == nil {
+		if err := r.verifyClearsigned(inReleaseData); err == nil {
+			content, extractErr := extractClearsignedContent(inReleaseData)
+			if extractErr != nil {
+				return nil, extractErr
+			}
+			return content, nil
+		}
+	}
+
+	// Fallback to Release + Release.gpg
+	releaseURL := r.buildReleaseURL()
+	releaseData, err := r.fetchURL(releaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Release file: %w", err)
+	}
+
+	signatureURL := releaseURL + ".gpg"
+	signatureData, err := r.fetchURL(signatureURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Release.gpg: %w", err)
+	}
+
+	if err := r.verifyDetachedSignature(releaseData, signatureData); err != nil {
+		return nil, err
+	}
+
+	return releaseData, nil
 }
 
 // parseReleaseFile parses the content of a Release file.
@@ -833,6 +894,111 @@ func (r *Repository) parseReleaseFile(content string) (*ReleaseFile, error) {
 	}
 
 	return release, nil
+}
+
+func (r *Repository) fetchURL(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la récupération de %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("impossible de récupérer %s (HTTP %d)", url, resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("erreur lors de la lecture de %s: %w", url, err)
+	}
+
+	return data, nil
+}
+
+func (r *Repository) verifyClearsigned(data []byte) error {
+	return r.verifyWithGPG(data, nil, true)
+}
+
+func (r *Repository) verifyDetachedSignature(payload, signature []byte) error {
+	return r.verifyWithGPG(payload, signature, false)
+}
+
+func (r *Repository) verifyWithGPG(payload, signature []byte, clearsigned bool) error {
+	releaseFile, err := os.CreateTemp("", "deb-release-*.txt")
+	if err != nil {
+		return fmt.Errorf("unable to create temp file for release: %w", err)
+	}
+	defer os.Remove(releaseFile.Name())
+
+	if err := os.WriteFile(releaseFile.Name(), payload, FilePermission); err != nil {
+		return fmt.Errorf("unable to write release data: %w", err)
+	}
+
+	var signatureFile string
+	if !clearsigned {
+		sig, err := os.CreateTemp("", "deb-release-sig-*.gpg")
+		if err != nil {
+			return fmt.Errorf("unable to create temp signature file: %w", err)
+		}
+		defer os.Remove(sig.Name())
+
+		if err := os.WriteFile(sig.Name(), signature, FilePermission); err != nil {
+			return fmt.Errorf("unable to write signature data: %w", err)
+		}
+
+		signatureFile = sig.Name()
+	}
+
+	args := []string{"--status-fd", "1"}
+	for _, keyring := range r.KeyringPaths {
+		trimmed := strings.TrimSpace(keyring)
+		if trimmed != "" {
+			args = append(args, "--keyring", trimmed)
+		}
+	}
+
+	if clearsigned {
+		args = append(args, releaseFile.Name())
+	} else {
+		args = append(args, signatureFile, releaseFile.Name())
+	}
+
+	cmd := exec.Command("gpgv", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gpg verification failed: %w: %s", err, string(output))
+	}
+
+	return nil
+}
+
+func extractClearsignedContent(data []byte) ([]byte, error) {
+	lines := strings.Split(string(data), "\n")
+	var content strings.Builder
+	started := false
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "-----BEGIN PGP SIGNATURE-----") {
+			break
+		}
+
+		if !started {
+			if line == "" {
+				started = true
+			}
+			continue
+		}
+
+		content.WriteString(line)
+		content.WriteString("\n")
+	}
+
+	result := strings.TrimSpace(content.String())
+	if result == "" {
+		return nil, fmt.Errorf("unable to extract clearsigned content")
+	}
+
+	return []byte(result + "\n"), nil
 }
 
 // parseChecksumLine parses a single checksum line from the Release file.

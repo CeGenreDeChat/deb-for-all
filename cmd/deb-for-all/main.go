@@ -24,6 +24,8 @@ type Config struct {
 	Version       string
 	DestDir       string
 	CacheDir      string
+	Keyrings      string
+	NoGPGVerify   bool
 	OrigOnly      bool
 	Silent        bool
 	BaseURL       string
@@ -64,15 +66,17 @@ func localize(key string) string {
 }
 
 func run() error {
+	keyrings := parseList(config.Keyrings)
+
 	switch strings.ToLower(config.Command) {
 	case "download":
-		return commands.DownloadBinaryPackage(config.PackageName, config.Version, config.DestDir, config.Silent, localizer)
+		return commands.DownloadBinaryPackage(config.PackageName, config.Version, config.DestDir, config.Silent, keyrings, config.NoGPGVerify, localizer)
 	case "download-source":
 		return commands.DownloadSourcePackage(config.PackageName, config.Version, config.DestDir, config.OrigOnly, config.Silent, localizer)
 	case "mirror":
-		return commands.CreateMirror(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.DownloadPkgs, config.Verbose, localizer)
+		return commands.CreateMirror(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.DownloadPkgs, config.Verbose, keyrings, config.NoGPGVerify, localizer)
 	case "update":
-		return commands.UpdateCache(config.BaseURL, config.Suites, config.Components, config.Architectures, config.CacheDir, config.Verbose, localizer)
+		return commands.UpdateCache(config.BaseURL, config.Suites, config.Components, config.Architectures, config.CacheDir, config.Verbose, keyrings, config.NoGPGVerify, localizer)
 	default:
 		return errors.New(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "error.unknown_command",
@@ -102,4 +106,16 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func parseList(value string) []string {
+	parts := strings.Split(strings.TrimSpace(value), ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

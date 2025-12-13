@@ -19,6 +19,8 @@
 "flag.version" = "Version du paquet"
 "flag.dest" = "Répertoire de destination (défaut: ./downloads)"
 "flag.cache" = "Répertoire de cache des métadonnées (défaut: ./cache)"
+"flag.keyring" = "Chemins de keyrings (séparés par des virgules) pour la vérification GPG"
+"flag.no_gpg_verify" = "Désactiver la vérification de signature GPG pour Release/InRelease"
 "flag.orig_only" = "Télécharger uniquement le tarball original (pour les paquets sources)"
 "flag.silent" = "Mode silencieux (pas d'affichage de progression)"
 "flag.help" = "Afficher l'aide"

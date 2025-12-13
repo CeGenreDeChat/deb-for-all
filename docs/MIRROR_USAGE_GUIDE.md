@@ -23,6 +23,8 @@ Le module Mirror de **deb-for-all** permet de créer des miroirs locaux de dép�
 
 ## 🚀 Démarrage Rapide
 
+> Sécurité: `deb-for-all` vérifie par défaut les signatures GPG des fichiers Release/InRelease. Fournissez vos keyrings de confiance avec `--keyring /chemin/debian-archive-keyring.gpg` ou désactivez explicitement avec `--no-gpg-verify` (non recommandé).
+
 ### Installation
 ```bash
 go install github.com/CeGenreDeChat/deb-for-all/cmd/deb-for-all@latest

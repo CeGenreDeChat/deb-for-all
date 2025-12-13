@@ -19,6 +19,8 @@
 "flag.version" = "Package version"
 "flag.dest" = "Destination directory (default: ./downloads)"
 "flag.cache" = "Cache directory for metadata (default: ./cache)"
+"flag.keyring" = "Comma-separated keyring file paths for GPG verification"
+"flag.no_gpg_verify" = "Disable GPG signature verification for Release/InRelease"
 "flag.orig_only" = "Download only the original tarball (for source packages)"
 "flag.silent" = "Silent mode (no progress output)"
 "flag.help" = "Display this help message"

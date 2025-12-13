@@ -20,6 +20,8 @@ type MirrorConfig struct {
 	Architectures    []string // Architectures to mirror (e.g., amd64, arm64)
 	DownloadPackages bool     // Whether to download .deb package files
 	Verbose          bool     // Enable verbose logging
+	KeyringPaths     []string // Trusted keyring files for signature verification
+	SkipGPGVerify    bool     // Disable GPG verification when true
 }
 
 // Validate checks that all required fields are set and valid.
@@ -65,6 +67,11 @@ func NewMirror(config MirrorConfig, basePath string) *Mirror {
 		config.Components,
 		config.Architectures,
 	)
+
+	repo.SetKeyringPaths(config.KeyringPaths)
+	if config.SkipGPGVerify {
+		repo.DisableSignatureVerification()
+	}
 
 	return &Mirror{
 		config:     config,
@@ -361,6 +368,8 @@ func (m *Mirror) GetMirrorInfo() map[string]any {
 		"components":        m.config.Components,
 		"architectures":     m.config.Architectures,
 		"download_packages": m.config.DownloadPackages,
+		"keyrings":          m.config.KeyringPaths,
+		"skip_gpg_verify":   m.config.SkipGPGVerify,
 	}
 }
 
@@ -454,6 +463,12 @@ func (m *Mirror) UpdateConfiguration(config MirrorConfig) error {
 	}
 	m.repository.SetSections(config.Components)
 	m.repository.SetArchitectures(config.Architectures)
+	m.repository.SetKeyringPaths(config.KeyringPaths)
+	if config.SkipGPGVerify {
+		m.repository.DisableSignatureVerification()
+	} else {
+		m.repository.EnableSignatureVerification()
+	}
 
 	return nil
 }

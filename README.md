@@ -83,6 +83,10 @@ export DEB_FOR_ALL_LANG=en
 export DEB_FOR_ALL_LANG=fr
 ```
 
+### Global Flags
+- `--keyring` (comma-separated) trusted GPG keyring files for Release/InRelease verification.
+- `--no-gpg-verify` disable GPG signature verification (checksum verification remains).
+
 ### Commands
 
 #### Download Binary Package

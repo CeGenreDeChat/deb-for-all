@@ -13,6 +13,8 @@ func initCommands() {
 	rootCmd.PersistentFlags().StringVarP(&config.DestDir, "dest", "d", "./downloads", localize("flag.dest"))
 	rootCmd.PersistentFlags().BoolVarP(&config.Verbose, "verbose", "v", false, localize("flag.verbose"))
 	rootCmd.PersistentFlags().StringVar(&config.CacheDir, "cache", "./cache", localize("flag.cache"))
+	rootCmd.PersistentFlags().StringVar(&config.Keyrings, "keyring", "", localize("flag.keyring"))
+	rootCmd.PersistentFlags().BoolVar(&config.NoGPGVerify, "no-gpg-verify", false, localize("flag.no_gpg_verify"))
 
 	// Commande `download`
 	downloadCmd := &cobra.Command{
