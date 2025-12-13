@@ -152,7 +152,7 @@ deb-for-all custom-repo --packages-xml ./packages.xml --exclude-deps recommends,
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
 | `--packages-xml` | - | XML file containing `<packages><package version="">name</package></packages>` | - |
-| `--exclude-deps` | - | Dependency types to exclude (e.g., `recommends,suggests`) | - |
+| `--exclude-deps` | - | Dependency types to exclude (allowed: `depends,pre-depends,recommends,suggests,enhances`) | - |
 | `--url` | `-u` | Repository URL | `http://deb.debian.org/debian` |
 | `--suites` | - | Suites (comma-separated) | `bookworm` |
 | `--components` | - | Components (comma-separated) | `main` |

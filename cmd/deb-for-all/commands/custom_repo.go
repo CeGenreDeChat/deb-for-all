@@ -32,7 +32,10 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 		return err
 	}
 
-	excludeSet := parseExcludeDeps(excludeDeps)
+	excludeSet, err := parseExcludeDeps(excludeDeps)
+	if err != nil {
+		return fmt.Errorf("valeur --exclude-deps invalide: %w", err)
+	}
 
 	suiteList := splitAndTrim(suites)
 	componentList := splitAndTrim(components)
@@ -120,13 +123,32 @@ func loadPackageSpecs(path string) ([]debian.PackageSpec, error) {
 	return specs, nil
 }
 
-func parseExcludeDeps(value string) map[string]bool {
+var (
+	allowedExcludeDepKinds    = []string{"depends", "pre-depends", "recommends", "suggests", "enhances"}
+	allowedExcludeDepKindsSet = map[string]struct{}{
+		"depends":     {},
+		"pre-depends": {},
+		"recommends":  {},
+		"suggests":    {},
+		"enhances":    {},
+	}
+)
+
+func parseExcludeDeps(value string) (map[string]bool, error) {
 	set := make(map[string]bool)
+
 	for _, item := range strings.Split(strings.TrimSpace(value), ",") {
 		trimmed := strings.ToLower(strings.TrimSpace(item))
-		if trimmed != "" {
-			set[trimmed] = true
+		if trimmed == "" {
+			continue
 		}
+
+		if _, ok := allowedExcludeDepKindsSet[trimmed]; !ok {
+			return nil, fmt.Errorf("type de dépendance inconnu '%s' (valeurs acceptées: %s)", trimmed, strings.Join(allowedExcludeDepKinds, ", "))
+		}
+
+		set[trimmed] = true
 	}
-	return set
+
+	return set, nil
 }
