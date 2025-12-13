@@ -30,6 +30,10 @@ This project uses specialized instruction files for different contexts. Apply th
 
 ## Key Patterns & Conventions
 
+### Shared Constants (use these, avoid literals)
+- `DirPermission`, `FilePermission` (from `pkg/debian/package.go`) for all filesystem permissions
+- `CompressionExtensions` (from `pkg/debian/package.go`) for Packages file formats
+
 ### Core Types and Relationships
 ```go
 // Central abstraction: Package struct with extensive metadata fields
@@ -66,17 +70,13 @@ lang := os.Getenv("DEB_FOR_ALL_LANG") // "en" or "fr"
 ```
 
 ### Error Handling Pattern
-- Use `fmt.Errorf()` with error wrapping: `fmt.Errorf("failed to X: %w", err)`
+- Always wrap errors with `%w`: `fmt.Errorf("failed to X: %w", err)` (avoid `%v`)
 - Custom errors in `internal/errors/` with structured codes and messages
 - Retry logic with exponential backoff in downloaders
 - Validation methods on config structs: `func (c *Config) Validate() error`
 
 ### File Parsing & Compression
-Repository files support multiple compression formats automatically:
-```go
-extensions := []string{"", ".gz", ".xz"}  // Try uncompressed, gzip, xz
-```
-Uses `github.com/ulikunitz/xz` for XZ decompression.
+Repository files support multiple compression formats automatically. Use the shared `CompressionExtensions` slice (from `pkg/debian/package.go`) instead of hard-coding extensions. Uses `github.com/ulikunitz/xz` for XZ decompression.
 
 ### CLI Command Structure
 ```bash
@@ -108,8 +108,9 @@ make mirror-example # Run examples/mirror/main.go
 2. **CLI integration**: Update `cmd/deb-for-all/main.go` flag parsing and run() function
 3. **New CLI command**: Add subcommand in `root.go`, implementation in `commands/` directory
 4. **Translations**: Update `locales/en.toml` and `locales/fr.toml` with new message keys
-5. **Example usage**: Add to `examples/` directory
-6. **Robot tests**: Add test cases to `test/suites/*.robot` using existing patterns
+5. **Documentation**: Update relevant files (`README.md`, `docs/`) when behavior or flags change
+6. **Example usage**: Add to `examples/` directory
+7. **Robot tests**: Add test cases to `test/suites/*.robot` using existing patterns
 
 ### Testing Strategy
 - **No unit tests** by design (stated in project goal)
@@ -159,7 +160,7 @@ When adding new Debian package fields, update `Package` struct in `package.go` a
 ### Commit Standards
 - Follow conventional commits: `feat:`, `fix:`, `docs:`, etc.
 - Include scope when appropriate: `feat(mirror):`, `fix(parser):`
-- Use French for all commit messages
+- Commit messages must be entirely in English (avoid foreign languages)
 - Breaking changes require `!` in type or `BREAKING CHANGE:` footer
 
 ### Versioning
@@ -171,7 +172,15 @@ When adding new Debian package fields, update `Package` struct in `package.go` a
 - **No unit tests** by project design
 - Examples in `examples/` directory must remain functional
 - Follow Go conventions: `gofmt`, exported functions documented
-- French user messages preserved in CLI output
+- English user messages preserved in CLI output
+
+## Agent Commit Summary
+
+- Always write a temporary summary file after code or documentation changes so it can be reused for the commit message.
+- Place it in the OS temp directory (for example `os.TempDir()` or `%TEMP%`), name it clearly (e.g., `agent-changes-summary.txt`), and print the full path for later retrieval.
+- Content: one-line title plus a short paragraph of key details; keep it concise and readable.
+- Purpose: make commit drafting easy without re-summarizing work.
+- Windows note: create/update with PowerShell, e.g. `Set-Content -Encoding UTF8 -Path (Join-Path $env:TEMP "agent-changes-summary.txt") -Value "Title`nDetails"` and then `Get-Content` to confirm.
 
 ---
 
