@@ -21,11 +21,11 @@ func DownloadSourcePackage(packageName, version, baseURL string, suites, compone
 	}
 
 	if packageName == "" {
-		return fmt.Errorf("le nom du paquet est requis")
+		return fmt.Errorf("package name is required")
 	}
 
 	if err := os.MkdirAll(destDir, debian.DirPermission); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
+		return fmt.Errorf("unable to create destination directory: %w", err)
 	}
 
 	if len(suites) == 0 {
@@ -62,12 +62,12 @@ func DownloadSourcePackage(packageName, version, baseURL string, suites, compone
 	}
 
 	if _, err := repo.FetchSources(); err != nil {
-		return fmt.Errorf("erreur lors de la récupération des paquets source: %w", err)
+		return fmt.Errorf("error retrieving source packages: %w", err)
 	}
 
 	sourcePackage, err := repo.GetSourcePackageMetadata(packageName, version)
 	if err != nil {
-		return fmt.Errorf("erreur lors de la récupération des métadonnées pour le paquet source %s: %w", packageName, err)
+		return fmt.Errorf("error retrieving metadata for source package %s: %w", packageName, err)
 	}
 
 	if version == "" {
@@ -97,7 +97,7 @@ func DownloadSourcePackage(packageName, version, baseURL string, suites, compone
 	if origOnly {
 		orig := sourcePackage.GetOrigTarball()
 		if orig == nil {
-			return fmt.Errorf("aucun tarball original trouvé pour %s", packageName)
+			return fmt.Errorf("no original tarball found for %s", packageName)
 		}
 
 		if !silent {
@@ -112,7 +112,7 @@ func DownloadSourcePackage(packageName, version, baseURL string, suites, compone
 	}
 
 	if downloadErr != nil {
-		return fmt.Errorf("erreur lors du téléchargement: %w", downloadErr)
+		return fmt.Errorf("error downloading: %w", downloadErr)
 	}
 
 	if !silent {

@@ -201,11 +201,11 @@ func (sp *SourcePackage) DownloadWithProgress(destDir string, progressCallback f
 // downloadFiles is the internal implementation for downloading source files.
 func (sp *SourcePackage) downloadFiles(destDir string, verbose bool, progressCallback func(string, int64, int64)) error {
 	if len(sp.Files) == 0 {
-		return fmt.Errorf("aucun fichier à télécharger pour le paquet source %s", sp.Name)
+		return fmt.Errorf("no files to download for source package %s", sp.Name)
 	}
 
 	if err := os.MkdirAll(destDir, DirPermission); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de destination: %w", err)
+		return fmt.Errorf("unable to create destination directory: %w", err)
 	}
 
 	downloader := NewDownloader()
@@ -252,17 +252,17 @@ func (sp *SourcePackage) downloadSingleFile(downloader *Downloader, file SourceF
 	}
 
 	if err != nil {
-		return fmt.Errorf("erreur lors du téléchargement de %s: %w", file.Name, err)
+		return fmt.Errorf("error downloading %s: %w", file.Name, err)
 	}
 
 	// Verify checksum
 	if file.SHA256Sum != "" {
 		if err := downloader.verifyChecksum(destPath, file.SHA256Sum, "sha256"); err != nil {
-			return fmt.Errorf("erreur de vérification SHA256 pour %s: %w", file.Name, err)
+			return fmt.Errorf("SHA256 verification failed for %s: %w", file.Name, err)
 		}
 	} else if file.MD5Sum != "" {
 		if err := downloader.verifyChecksum(destPath, file.MD5Sum, "md5"); err != nil {
-			return fmt.Errorf("erreur de vérification MD5 pour %s: %w", file.Name, err)
+			return fmt.Errorf("MD5 verification failed for %s: %w", file.Name, err)
 		}
 	}
 
@@ -315,13 +315,13 @@ func (p *Package) GetSourceName() string {
 // GetDownloadInfo fetches HTTP metadata for the package via a HEAD request.
 func (p *Package) GetDownloadInfo() (*DownloadInfo, error) {
 	if p.DownloadURL == "" {
-		return nil, fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
+		return nil, fmt.Errorf("no download URL specified for package %s", p.Name)
 	}
 
 	downloader := NewDownloader()
 	resp, err := downloader.doRequestWithRetry(http.MethodHead, p.DownloadURL, true)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la vérification de l'URL: %w", err)
+		return nil, fmt.Errorf("error checking URL: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -337,7 +337,7 @@ func (p *Package) GetDownloadInfo() (*DownloadInfo, error) {
 func ReadControlFile(filePath string) (*Package, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("erreur de lecture du fichier control: %w", err)
+		return nil, fmt.Errorf("error reading control file: %w", err)
 	}
 	return parseControlData(string(data))
 }
@@ -346,7 +346,7 @@ func ReadControlFile(filePath string) (*Package, error) {
 func (p *Package) WriteControlFile(filePath string) error {
 	content := p.FormatAsControl()
 	if err := os.WriteFile(filePath, []byte(content), FilePermission); err != nil {
-		return fmt.Errorf("erreur d'écriture du fichier control: %w", err)
+		return fmt.Errorf("error writing control file: %w", err)
 	}
 	return nil
 }

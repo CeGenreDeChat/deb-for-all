@@ -110,7 +110,7 @@ func (r *Repository) downloader() *Downloader {
 func (r *Repository) FetchPackages() ([]string, error) {
 	if r.VerifyRelease {
 		if err := r.FetchReleaseFile(); err != nil {
-			return nil, fmt.Errorf("erreur lors de la récupération du fichier Release: %w", err)
+			return nil, fmt.Errorf("error retrieving Release file: %w", err)
 		}
 	}
 
@@ -134,7 +134,7 @@ func (r *Repository) FetchPackages() ([]string, error) {
 	}
 
 	if !foundAtLeastOne {
-		return nil, fmt.Errorf("impossible de récupérer les paquets depuis la distribution %s: %w", r.Distribution, lastErr)
+		return nil, fmt.Errorf("unable to fetch packages from distribution %s: %w", r.Distribution, lastErr)
 	}
 
 	result := make([]string, 0, len(allPackages))
@@ -150,17 +150,17 @@ func (r *Repository) FetchPackages() ([]string, error) {
 // and writes the decompressed files to the provided cache directory.
 func (r *Repository) FetchAndCachePackages(cacheDir string) error {
 	if cacheDir == "" {
-		return fmt.Errorf("le répertoire de cache est requis")
+		return fmt.Errorf("cache directory is required")
 	}
 
 	if r.VerifyRelease {
 		if err := r.FetchReleaseFile(); err != nil {
-			return fmt.Errorf("erreur lors de la récupération du fichier Release: %w", err)
+			return fmt.Errorf("error retrieving Release file: %w", err)
 		}
 	}
 
 	if err := os.MkdirAll(cacheDir, DirPermission); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire de cache: %w", err)
+		return fmt.Errorf("unable to create cache directory: %w", err)
 	}
 
 	var lastErr error
@@ -177,7 +177,7 @@ func (r *Repository) FetchAndCachePackages(cacheDir string) error {
 	}
 
 	if !foundAtLeastOne {
-		return fmt.Errorf("impossible de mettre en cache les paquets depuis la distribution %s: %w", r.Distribution, lastErr)
+		return fmt.Errorf("unable to cache packages from distribution %s: %w", r.Distribution, lastErr)
 	}
 
 	return nil
@@ -188,7 +188,7 @@ func (r *Repository) FetchAndCachePackages(cacheDir string) error {
 func (r *Repository) FetchSources() ([]string, error) {
 	if r.VerifyRelease {
 		if err := r.FetchReleaseFile(); err != nil {
-			return nil, fmt.Errorf("erreur lors de la récupération du fichier Release: %w", err)
+			return nil, fmt.Errorf("error retrieving Release file: %w", err)
 		}
 	}
 
@@ -214,7 +214,7 @@ func (r *Repository) FetchSources() ([]string, error) {
 	}
 
 	if !foundAtLeastOne {
-		return nil, fmt.Errorf("impossible de récupérer les paquets source depuis la distribution %s: %w", r.Distribution, lastErr)
+		return nil, fmt.Errorf("unable to fetch source packages from distribution %s: %w", r.Distribution, lastErr)
 	}
 
 	r.SourceMetadata = metadata
@@ -235,7 +235,7 @@ func (r *Repository) fetchSourcesForSection(section string) ([]SourcePackage, er
 		sourcesURL := r.buildSourcesURLWithDist(r.Distribution, section) + ext
 
 		if !r.checkURLExists(sourcesURL) {
-			lastErr = fmt.Errorf("fichier Sources non accessible: %s", sourcesURL)
+			lastErr = fmt.Errorf("Sources file not accessible: %s", sourcesURL)
 			continue
 		}
 
@@ -262,18 +262,18 @@ func (r *Repository) fetchSourcesForSection(section string) ([]SourcePackage, er
 func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section string) ([]SourcePackage, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération du fichier Sources: %w", err)
+		return nil, fmt.Errorf("error retrieving Sources file: %w", err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier Sources: %w", err)
+		return nil, fmt.Errorf("error reading Sources file: %w", err)
 	}
 
 	if r.VerifyRelease && r.ReleaseInfo != nil {
 		if err = r.VerifySourcesFileChecksum(section, data); err != nil {
-			return nil, fmt.Errorf("échec de la vérification du checksum: %w", err)
+			return nil, fmt.Errorf("failed to verify checksum: %w", err)
 		}
 	}
 
@@ -283,7 +283,7 @@ func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section
 func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesURL, extension, section string) ([]SourcePackage, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération du fichier Sources compressé: %w", err)
+		return nil, fmt.Errorf("error retrieving compressed Sources file: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -297,13 +297,13 @@ func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesUR
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier Sources décompressé: %w", err)
+		return nil, fmt.Errorf("error reading decompressed Sources file: %w", err)
 	}
 
 	if r.VerifyRelease && r.ReleaseInfo != nil {
 		filename := fmt.Sprintf("%s/source/Sources", section)
 		if err = r.verifyDecompressedFileChecksum(filename, data); err != nil {
-			return nil, fmt.Errorf("échec de la vérification du checksum décompressé: %w", err)
+			return nil, fmt.Errorf("failed to verify decompressed checksum: %w", err)
 		}
 	}
 
@@ -405,7 +405,7 @@ func (r *Repository) parseSourcesData(data []byte, section string) ([]SourcePack
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier Sources: %w", err)
+		return nil, fmt.Errorf("error reading Sources file: %w", err)
 	}
 
 	return sources, nil
@@ -502,7 +502,7 @@ func (r *Repository) cachePackagesForSectionArch(cacheDir, section, architecture
 		packagesURL := r.buildPackagesURLWithDist(r.Distribution, section, architecture) + ext
 
 		if !r.checkURLExists(packagesURL) {
-			lastErr = fmt.Errorf("fichier Packages non accessible: %s", packagesURL)
+			lastErr = fmt.Errorf("Packages file not accessible: %s", packagesURL)
 			continue
 		}
 
@@ -514,12 +514,12 @@ func (r *Repository) cachePackagesForSectionArch(cacheDir, section, architecture
 
 		targetDir := filepath.Join(cacheDir, r.Distribution, section, fmt.Sprintf("binary-%s", architecture))
 		if err := os.MkdirAll(targetDir, DirPermission); err != nil {
-			return fmt.Errorf("impossible de créer le répertoire de cache: %w", err)
+			return fmt.Errorf("unable to create cache directory: %w", err)
 		}
 
 		targetPath := filepath.Join(targetDir, "Packages")
 		if err := os.WriteFile(targetPath, data, FilePermission); err != nil {
-			return fmt.Errorf("erreur lors de l'écriture du cache Packages: %w", err)
+			return fmt.Errorf("error writing Packages cache: %w", err)
 		}
 
 		return nil
@@ -531,19 +531,19 @@ func (r *Repository) cachePackagesForSectionArch(cacheDir, section, architecture
 func (r *Repository) downloadPackagesData(packagesURL, extension, section, architecture string) ([]byte, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages: %w", err)
+		return nil, fmt.Errorf("error retrieving Packages file: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if extension == "" {
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages: %w", err)
+			return nil, fmt.Errorf("error reading Packages file: %w", err)
 		}
 
 		if r.VerifyRelease && r.ReleaseInfo != nil {
 			if err := r.VerifyPackagesFileChecksum(section, architecture, data); err != nil {
-				return nil, fmt.Errorf("échec de la vérification du checksum: %w", err)
+				return nil, fmt.Errorf("failed to verify checksum: %w", err)
 			}
 		}
 
@@ -560,13 +560,13 @@ func (r *Repository) downloadPackagesData(packagesURL, extension, section, archi
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages décompressé: %w", err)
+		return nil, fmt.Errorf("error reading decompressed Packages file: %w", err)
 	}
 
 	if r.VerifyRelease && r.ReleaseInfo != nil {
 		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
 		if err := r.verifyDecompressedFileChecksum(filename, data); err != nil {
-			return nil, fmt.Errorf("échec de la vérification du checksum décompressé: %w", err)
+			return nil, fmt.Errorf("failed to verify decompressed checksum: %w", err)
 		}
 	}
 
@@ -581,7 +581,7 @@ func (r *Repository) fetchPackagesForSectionArch(section, arch string) ([]string
 		packagesURL := r.buildPackagesURLWithDist(r.Distribution, section, arch) + ext
 
 		if !r.checkURLExists(packagesURL) {
-			lastErr = fmt.Errorf("fichier Packages non accessible: %s", packagesURL)
+			lastErr = fmt.Errorf("Packages file not accessible: %s", packagesURL)
 			continue
 		}
 
@@ -619,7 +619,7 @@ func (r *Repository) checkURLExists(url string) bool {
 // Returns exact matches first, followed by partial matches.
 func (r *Repository) SearchPackage(packageName string) ([]string, error) {
 	if len(r.Packages) == 0 {
-		return nil, fmt.Errorf("aucun paquet disponible - appelez d'abord FetchPackages()")
+		return nil, fmt.Errorf("no packages available - call FetchPackages() first")
 	}
 
 	packageNameLower := strings.ToLower(packageName)
@@ -636,7 +636,7 @@ func (r *Repository) SearchPackage(packageName string) ([]string, error) {
 	}
 
 	if len(exactMatches) == 0 && len(partialMatches) == 0 {
-		return nil, fmt.Errorf("aucun paquet trouvé pour '%s' dans la distribution %s", packageName, r.Distribution)
+		return nil, fmt.Errorf("no packages found for '%s' in distribution %s", packageName, r.Distribution)
 	}
 
 	result := make([]string, 0, len(exactMatches)+len(partialMatches))
@@ -716,10 +716,10 @@ func (r *Repository) DownloadPackageFromSources(packageName, version, architectu
 			return NewDownloader().DownloadToDirSilent(pkg, destDir)
 		}
 
-		lastErr = fmt.Errorf("paquet non trouvé dans la section %s", section)
+		lastErr = fmt.Errorf("package not found in section %s", section)
 	}
 
-	return fmt.Errorf("paquet %s_%s_%s non trouvé dans aucune section: %w", packageName, version, architecture, lastErr)
+	return fmt.Errorf("package %s_%s_%s not found in any section: %w", packageName, version, architecture, lastErr)
 }
 
 // SearchPackageInSources searches for a package across all default sections.
@@ -746,7 +746,7 @@ func (r *Repository) SearchPackageInSources(packageName, version, architecture s
 		}
 	}
 
-	return nil, fmt.Errorf("paquet %s_%s_%s non trouvé", packageName, version, architecture)
+	return nil, fmt.Errorf("package %s_%s_%s not found", packageName, version, architecture)
 }
 
 // buildPackagesURLWithDist constructs the URL for a Packages file.
@@ -800,18 +800,18 @@ func (r *Repository) IsReleaseVerificationEnabled() bool {
 func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, section, architecture string) ([]string, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages: %w", err)
+		return nil, fmt.Errorf("error retrieving Packages file: %w", err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages: %w", err)
+		return nil, fmt.Errorf("error reading Packages file: %w", err)
 	}
 
 	if r.VerifyRelease && r.ReleaseInfo != nil {
 		if err = r.VerifyPackagesFileChecksum(section, architecture, data); err != nil {
-			return nil, fmt.Errorf("échec de la vérification du checksum: %w", err)
+			return nil, fmt.Errorf("failed to verify checksum: %w", err)
 		}
 	}
 
@@ -822,7 +822,7 @@ func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, secti
 func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packagesURL, extension, section, architecture string) ([]string, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages compressé: %w", err)
+		return nil, fmt.Errorf("error retrieving compressed Packages file: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -836,13 +836,13 @@ func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packages
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages décompressé: %w", err)
+		return nil, fmt.Errorf("error reading decompressed Packages file: %w", err)
 	}
 
 	if r.VerifyRelease && r.ReleaseInfo != nil {
 		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
 		if err = r.verifyDecompressedFileChecksum(filename, data); err != nil {
-			return nil, fmt.Errorf("échec de la vérification du checksum décompressé: %w", err)
+			return nil, fmt.Errorf("failed to verify decompressed checksum: %w", err)
 		}
 	}
 
@@ -856,19 +856,19 @@ func (r *Repository) createDecompressor(body io.Reader, extension string) (io.Re
 	case ".gz":
 		gzReader, err := gzip.NewReader(body)
 		if err != nil {
-			return nil, nil, fmt.Errorf("erreur lors de la décompression gzip: %w", err)
+			return nil, nil, fmt.Errorf("error during gzip decompression: %w", err)
 		}
 		return gzReader, func() { gzReader.Close() }, nil
 
 	case ".xz":
 		xzReader, err := xz.NewReader(body)
 		if err != nil {
-			return nil, nil, fmt.Errorf("erreur lors de la décompression xz: %w", err)
+			return nil, nil, fmt.Errorf("error during xz decompression: %w", err)
 		}
 		return xzReader, nil, nil
 
 	default:
-		return nil, nil, fmt.Errorf("format de compression non supporté: %s", extension)
+		return nil, nil, fmt.Errorf("unsupported compression format: %s", extension)
 	}
 }
 
@@ -938,7 +938,7 @@ func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture du fichier Packages: %w", err)
+		return nil, fmt.Errorf("error reading Packages file: %w", err)
 	}
 
 	r.PackageMetadata = packageMetadata
@@ -1007,7 +1007,7 @@ func (r *Repository) verifyDecompressedFileChecksum(filename string, data []byte
 		}
 	}
 
-	return fmt.Errorf("aucun checksum trouvé pour le fichier %s", filename)
+	return fmt.Errorf("no checksum found for file %s", filename)
 }
 
 // SetDistribution sets the active distribution (suite).
@@ -1046,7 +1046,7 @@ func (r *Repository) GetPackageMetadata(packageName string) (*Package, error) {
 // the first match is returned.
 func (r *Repository) GetPackageMetadataWithArch(packageName, version string, archOrder []string) (*Package, error) {
 	if len(r.PackageMetadata) == 0 {
-		return nil, fmt.Errorf("aucune métadonnée de paquet disponible - appelez d'abord FetchPackages()")
+		return nil, fmt.Errorf("no package metadata available - call FetchPackages() first")
 	}
 
 	matches := make([]*Package, 0)
@@ -1063,9 +1063,9 @@ func (r *Repository) GetPackageMetadataWithArch(packageName, version string, arc
 
 	if len(matches) == 0 {
 		if version == "" {
-			return nil, fmt.Errorf("paquet '%s' non trouvé dans les métadonnées", packageName)
+			return nil, fmt.Errorf("package '%s' not found in metadata", packageName)
 		}
-		return nil, fmt.Errorf("version %s introuvable pour le paquet %s", version, packageName)
+		return nil, fmt.Errorf("version %s not found for package %s", version, packageName)
 	}
 
 	order := archOrder
@@ -1106,7 +1106,7 @@ func (r *Repository) GetAllPackageMetadata() []Package {
 // When version is empty, the first matching entry is returned.
 func (r *Repository) GetSourcePackageMetadata(packageName, version string) (*SourcePackage, error) {
 	if len(r.SourceMetadata) == 0 {
-		return nil, fmt.Errorf("aucune métadonnée de paquet source disponible - appelez d'abord FetchSources()")
+		return nil, fmt.Errorf("no source package metadata available - call FetchSources() first")
 	}
 
 	for i := range r.SourceMetadata {
@@ -1121,10 +1121,10 @@ func (r *Repository) GetSourcePackageMetadata(packageName, version string) (*Sou
 	}
 
 	if version == "" {
-		return nil, fmt.Errorf("paquet source '%s' non trouvé dans les métadonnées", packageName)
+		return nil, fmt.Errorf("source package '%s' not found in metadata", packageName)
 	}
 
-	return nil, fmt.Errorf("version %s introuvable pour le paquet source %s", version, packageName)
+	return nil, fmt.Errorf("version %s not found for source package %s", version, packageName)
 }
 
 // GetAllSourceMetadata returns all source package metadata.
@@ -1139,7 +1139,7 @@ func (r *Repository) GetAllSourceMetadata() []SourcePackage {
 // relationships are included unless explicitly excluded.
 func (r *Repository) ResolveDependencies(specs []PackageSpec, exclude map[string]bool) (map[string]Package, error) {
 	if len(r.PackageMetadata) == 0 {
-		return nil, fmt.Errorf("aucune métadonnée de paquet disponible - appelez d'abord FetchPackages()")
+		return nil, fmt.Errorf("no package metadata available - call FetchPackages() first")
 	}
 
 	index := make(map[string]*Package, len(r.PackageMetadata))
@@ -1166,10 +1166,10 @@ func (r *Repository) ResolveDependencies(specs []PackageSpec, exclude map[string
 
 		pkg := index[name]
 		if pkg == nil {
-			return nil, fmt.Errorf("paquet '%s' non trouvé dans les métadonnées", name)
+			return nil, fmt.Errorf("package '%s' not found in metadata", name)
 		}
 		if spec.Version != "" && pkg.Version != spec.Version {
-			return nil, fmt.Errorf("version %s introuvable pour %s (trouvé: %s)", spec.Version, name, pkg.Version)
+			return nil, fmt.Errorf("version %s not found for %s (found: %s)", spec.Version, name, pkg.Version)
 		}
 
 		result[name] = *pkg
@@ -1200,7 +1200,7 @@ func (r *Repository) collectDependencies(pkg *Package, exclude map[string]bool) 
 	// Align with apt-style resolution: hard deps only, optionals when not excluded.
 	add("depends", pkg.Depends)
 	add("pre-depends", pkg.PreDepends)
-	add("recommends", pkg.Recommends) // apt installs Recommends by défaut
+	add("recommends", pkg.Recommends) // apt installs Recommends by default
 	add("suggests", pkg.Suggests)     // optional; can be excluded via flag
 	add("enhances", pkg.Enhances)     // optional; can be excluded via flag
 
@@ -1242,7 +1242,7 @@ func (r *Repository) FetchReleaseFile() error {
 
 	releaseInfo, err := r.parseReleaseFile(string(releaseData))
 	if err != nil {
-		return fmt.Errorf("erreur lors du parsing du fichier Release: %w", err)
+		return fmt.Errorf("error parsing Release file: %w", err)
 	}
 
 	r.ReleaseInfo = releaseInfo
@@ -1388,13 +1388,13 @@ func (r *Repository) parseReleaseFile(content string) (*ReleaseFile, error) {
 func (r *Repository) fetchURL(url string) ([]byte, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, url, true)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération de %s: %w", url, err)
+		return nil, fmt.Errorf("error retrieving %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la lecture de %s: %w", url, err)
+		return nil, fmt.Errorf("error reading %s: %w", url, err)
 	}
 
 	return data, nil
@@ -1491,7 +1491,7 @@ func extractClearsignedContent(data []byte) ([]byte, error) {
 func (r *Repository) parseChecksumLine(line string) (*FileChecksum, error) {
 	fields := strings.Fields(line)
 	if len(fields) < 3 {
-		return nil, fmt.Errorf("ligne de checksum malformée: %s", line)
+		return nil, fmt.Errorf("malformed checksum line: %s", line)
 	}
 
 	hash := fields[0]
@@ -1500,7 +1500,7 @@ func (r *Repository) parseChecksumLine(line string) (*FileChecksum, error) {
 
 	size, err := strconv.ParseInt(sizeStr, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("taille invalide dans la ligne de checksum: %w", err)
+		return nil, fmt.Errorf("invalid size in checksum line: %w", err)
 	}
 
 	return &FileChecksum{
@@ -1514,7 +1514,7 @@ func (r *Repository) parseChecksumLine(line string) (*FileChecksum, error) {
 // the checksums in the Release file. It prefers SHA256 over MD5.
 func (r *Repository) VerifyPackagesFileChecksum(section, architecture string, data []byte) error {
 	if r.ReleaseInfo == nil {
-		return fmt.Errorf("informations Release non disponibles - appelez d'abord FetchReleaseFile()")
+		return fmt.Errorf("Release information unavailable - call FetchReleaseFile() first")
 	}
 
 	filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
@@ -1532,14 +1532,14 @@ func (r *Repository) VerifyPackagesFileChecksum(section, architecture string, da
 		}
 	}
 
-	return fmt.Errorf("aucun checksum trouvé pour le fichier %s", filename)
+	return fmt.Errorf("no checksum found for file %s", filename)
 }
 
 // VerifySourcesFileChecksum verifies the checksum of a Sources file against
 // the checksums in the Release file. It prefers SHA256 over MD5.
 func (r *Repository) VerifySourcesFileChecksum(section string, data []byte) error {
 	if r.ReleaseInfo == nil {
-		return fmt.Errorf("informations Release non disponibles - appelez d'abord FetchReleaseFile()")
+		return fmt.Errorf("Release information unavailable - call FetchReleaseFile() first")
 	}
 
 	filename := fmt.Sprintf("%s/source/Sources", section)
@@ -1556,7 +1556,7 @@ func (r *Repository) VerifySourcesFileChecksum(section string, data []byte) erro
 		}
 	}
 
-	return fmt.Errorf("aucun checksum trouvé pour le fichier %s", filename)
+	return fmt.Errorf("no checksum found for file %s", filename)
 }
 
 // verifyDataChecksum computes and verifies a checksum against expected value.
@@ -1569,14 +1569,14 @@ func (r *Repository) verifyDataChecksum(data []byte, expectedHash, hashType stri
 	case "sha256":
 		hasher = sha256.New()
 	default:
-		return fmt.Errorf("type de hash non supporté: %s", hashType)
+		return fmt.Errorf("unsupported hash type: %s", hashType)
 	}
 
 	hasher.Write(data)
 	actualHash := fmt.Sprintf("%x", hasher.Sum(nil))
 
 	if actualHash != strings.ToLower(expectedHash) {
-		return fmt.Errorf("checksum %s invalide. Attendu: %s, Actuel: %s", hashType, expectedHash, actualHash)
+		return fmt.Errorf("invalid %s checksum. Expected: %s, Actual: %s", hashType, expectedHash, actualHash)
 	}
 
 	return nil

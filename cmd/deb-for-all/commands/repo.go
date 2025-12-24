@@ -92,7 +92,7 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 		fmt.Println("=== Statut du Miroir ===")
 		status, err := mirror.GetMirrorStatus()
 		if err != nil {
-			fmt.Printf("Erreur lors de la vérification du statut: %v\n", err)
+			fmt.Printf("Error checking status: %v\n", err)
 		} else {
 			for key, value := range status {
 				fmt.Printf("%s: %v\n", key, value)

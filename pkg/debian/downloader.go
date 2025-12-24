@@ -58,7 +58,7 @@ func (d *Downloader) doRequestWithRetry(method, url string, silent bool) (*http.
 	for attempt := 1; attempt <= d.RetryAttempts; attempt++ {
 		req, err := http.NewRequest(method, url, nil)
 		if err != nil {
-			return nil, fmt.Errorf("erreur lors de la création de la requête: %w", err)
+			return nil, fmt.Errorf("error creating request: %w", err)
 		}
 		req.Header.Set("User-Agent", d.UserAgent)
 
@@ -85,7 +85,7 @@ func (d *Downloader) doRequestWithRetry(method, url string, silent bool) (*http.
 		}
 	}
 
-	return nil, fmt.Errorf("erreur lors du téléchargement après %d tentatives: %w", d.RetryAttempts, lastErr)
+	return nil, fmt.Errorf("download failed after %d attempts: %w", d.RetryAttempts, lastErr)
 }
 
 // getPackageFilename returns the filename for a package, generating one if not set.
@@ -99,7 +99,7 @@ func getPackageFilename(pkg *Package) string {
 // downloadToFile performs the actual download to a file with optional progress callback.
 func (d *Downloader) downloadToFile(url, destPath string, progressCallback func(downloaded, total int64)) error {
 	if err := os.MkdirAll(filepath.Dir(destPath), DirPermission); err != nil {
-		return fmt.Errorf("impossible de créer le répertoire parent: %w", err)
+		return fmt.Errorf("unable to create parent directory: %w", err)
 	}
 
 	resp, err := d.doRequestWithRetry(http.MethodGet, url, progressCallback == nil)
@@ -110,14 +110,14 @@ func (d *Downloader) downloadToFile(url, destPath string, progressCallback func(
 
 	destFile, err := os.Create(destPath)
 	if err != nil {
-		return fmt.Errorf("impossible de créer le fichier de destination: %w", err)
+		return fmt.Errorf("unable to create destination file: %w", err)
 	}
 	defer destFile.Close()
 
 	if progressCallback == nil {
 		_, err = io.Copy(destFile, resp.Body)
 		if err != nil {
-			return fmt.Errorf("erreur lors de la copie du fichier: %w", err)
+			return fmt.Errorf("error copying file: %w", err)
 		}
 		return nil
 	}
@@ -134,7 +134,7 @@ func (d *Downloader) copyWithProgress(src io.Reader, dst io.Writer, totalSize in
 		n, err := src.Read(buffer)
 		if n > 0 {
 			if _, writeErr := dst.Write(buffer[:n]); writeErr != nil {
-				return fmt.Errorf("erreur lors de l'écriture: %w", writeErr)
+				return fmt.Errorf("error writing: %w", writeErr)
 			}
 			downloaded += int64(n)
 			callback(downloaded, totalSize)
@@ -143,7 +143,7 @@ func (d *Downloader) copyWithProgress(src io.Reader, dst io.Writer, totalSize in
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("erreur lors de la lecture: %w", err)
+			return fmt.Errorf("error reading: %w", err)
 		}
 	}
 }
@@ -151,7 +151,7 @@ func (d *Downloader) copyWithProgress(src io.Reader, dst io.Writer, totalSize in
 // DownloadWithProgress downloads a package to the specified path with progress reporting.
 func (d *Downloader) DownloadWithProgress(pkg *Package, destPath string, progressCallback func(downloaded, total int64)) error {
 	if pkg.DownloadURL == "" {
-		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", pkg.Name)
+		return fmt.Errorf("no download URL specified for package %s", pkg.Name)
 	}
 
 	if err := d.downloadToFile(pkg.DownloadURL, destPath, progressCallback); err != nil {
@@ -165,7 +165,7 @@ func (d *Downloader) DownloadWithProgress(pkg *Package, destPath string, progres
 // DownloadSilent downloads a package without any output.
 func (d *Downloader) DownloadSilent(pkg *Package, destPath string) error {
 	if pkg.DownloadURL == "" {
-		return fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", pkg.Name)
+		return fmt.Errorf("no download URL specified for package %s", pkg.Name)
 	}
 	return d.downloadToFile(pkg.DownloadURL, destPath, nil)
 }
@@ -186,7 +186,7 @@ func (d *Downloader) DownloadWithChecksum(pkg *Package, destPath, checksum, chec
 func (d *Downloader) verifyChecksum(filePath, expectedChecksum, checksumType string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("impossible d'ouvrir le fichier pour vérification: %w", err)
+		return fmt.Errorf("unable to open file for verification: %w", err)
 	}
 	defer file.Close()
 
@@ -197,16 +197,16 @@ func (d *Downloader) verifyChecksum(filePath, expectedChecksum, checksumType str
 	case "sha256":
 		hasher = sha256.New()
 	default:
-		return fmt.Errorf("type de somme de contrôle non supporté: %s", checksumType)
+		return fmt.Errorf("unsupported checksum type: %s", checksumType)
 	}
 
 	if _, err = io.Copy(hasher, file); err != nil {
-		return fmt.Errorf("erreur lors du calcul de la somme de contrôle: %w", err)
+		return fmt.Errorf("error computing checksum: %w", err)
 	}
 
 	actualChecksum := fmt.Sprintf("%x", hasher.Sum(nil))
 	if actualChecksum != expectedChecksum {
-		return fmt.Errorf("la somme de contrôle ne correspond pas. Attendue: %s, Actuelle: %s", expectedChecksum, actualChecksum)
+		return fmt.Errorf("checksum mismatch. Expected: %s, Actual: %s", expectedChecksum, actualChecksum)
 	}
 
 	fmt.Printf("Somme de contrôle %s vérifiée avec succès\n", checksumType)
@@ -297,7 +297,7 @@ func (d *Downloader) DownloadMultiple(packages []*Package, destDir string, maxCo
 	var errors []error
 	for result := range results {
 		if result.err != nil {
-			errors = append(errors, fmt.Errorf("erreur pour le paquet %s: %w", result.pkg.Name, result.err))
+			errors = append(errors, fmt.Errorf("error for package %s: %w", result.pkg.Name, result.err))
 		}
 	}
 
@@ -322,7 +322,7 @@ func (d *Downloader) DownloadSourcePackageWithProgress(sourcePkg *SourcePackage,
 // DownloadSourceFile downloads a single source file with checksum verification.
 func (d *Downloader) DownloadSourceFile(sourceFile *SourceFile, destDir string) error {
 	if sourceFile.URL == "" {
-		return fmt.Errorf("aucune URL spécifiée pour le fichier %s", sourceFile.Name)
+		return fmt.Errorf("no URL specified for file %s", sourceFile.Name)
 	}
 
 	destPath := filepath.Join(destDir, sourceFile.Name)
@@ -348,7 +348,7 @@ func (d *Downloader) DownloadSourceFile(sourceFile *SourceFile, destDir string) 
 func (d *Downloader) DownloadOrigTarball(sourcePkg *SourcePackage, destDir string) error {
 	origFile := sourcePkg.GetOrigTarball()
 	if origFile == nil {
-		return fmt.Errorf("aucun fichier tarball original trouvé pour le paquet source %s", sourcePkg.Name)
+		return fmt.Errorf("no original tarball found for source package %s", sourcePkg.Name)
 	}
 	return d.DownloadSourceFile(origFile, destDir)
 }
@@ -359,13 +359,13 @@ func (d *Downloader) GetFileSize(url string) (int64, error) {
 
 	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
-		return 0, fmt.Errorf("erreur lors de la création de la requête: %w", err)
+		return 0, fmt.Errorf("error creating request: %w", err)
 	}
 	req.Header.Set("User-Agent", d.UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("erreur lors de la requête HEAD: %w", err)
+		return 0, fmt.Errorf("error during HEAD request: %w", err)
 	}
 	defer resp.Body.Close()
 
