@@ -51,12 +51,12 @@ func (d *Downloader) newHTTPClient() *http.Client {
 
 // doRequestWithRetry performs an HTTP request with retry logic.
 // Returns the response and any error encountered.
-func (d *Downloader) doRequestWithRetry(url string, silent bool) (*http.Response, error) {
+func (d *Downloader) doRequestWithRetry(method, url string, silent bool) (*http.Response, error) {
 	client := d.newHTTPClient()
 	var lastErr error
 
 	for attempt := 1; attempt <= d.RetryAttempts; attempt++ {
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest(method, url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("erreur lors de la création de la requête: %w", err)
 		}
@@ -102,7 +102,7 @@ func (d *Downloader) downloadToFile(url, destPath string, progressCallback func(
 		return fmt.Errorf("impossible de créer le répertoire parent: %w", err)
 	}
 
-	resp, err := d.doRequestWithRetry(url, progressCallback == nil)
+	resp, err := d.doRequestWithRetry(http.MethodGet, url, progressCallback == nil)
 	if err != nil {
 		return err
 	}

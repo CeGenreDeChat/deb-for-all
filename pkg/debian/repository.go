@@ -101,6 +101,10 @@ func NewRepository(name, url, description, distribution string, sections, archit
 	}
 }
 
+func (r *Repository) downloader() *Downloader {
+	return NewDownloader()
+}
+
 // FetchPackages fetches and parses Packages files from the repository.
 // Returns a list of package names found across all configured sections and architectures.
 func (r *Repository) FetchPackages() ([]string, error) {
@@ -256,15 +260,11 @@ func (r *Repository) fetchSourcesForSection(section string) ([]SourcePackage, er
 }
 
 func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section string) ([]SourcePackage, error) {
-	resp, err := http.Get(sourcesURL)
+	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la récupération du fichier Sources: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("impossible de récupérer le fichier Sources (HTTP %d)", resp.StatusCode)
-	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -281,15 +281,11 @@ func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section
 }
 
 func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesURL, extension, section string) ([]SourcePackage, error) {
-	resp, err := http.Get(sourcesURL)
+	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la récupération du fichier Sources compressé: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("impossible de récupérer le fichier Sources compressé (HTTP %d)", resp.StatusCode)
-	}
 
 	reader, cleanup, err := r.createDecompressor(resp.Body, extension)
 	if err != nil {
@@ -533,15 +529,11 @@ func (r *Repository) cachePackagesForSectionArch(cacheDir, section, architecture
 }
 
 func (r *Repository) downloadPackagesData(packagesURL, extension, section, architecture string) ([]byte, error) {
-	resp, err := http.Get(packagesURL)
+	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("impossible de récupérer le fichier Packages (HTTP %d)", resp.StatusCode)
-	}
 
 	if extension == "" {
 		data, err := io.ReadAll(resp.Body)
@@ -615,7 +607,7 @@ func (r *Repository) fetchPackagesForSectionArch(section, arch string) ([]string
 
 // checkURLExists performs a HEAD request to check if a URL is accessible.
 func (r *Repository) checkURLExists(url string) bool {
-	resp, err := http.Head(url)
+	resp, err := r.downloader().doRequestWithRetry(http.MethodHead, url, true)
 	if err != nil {
 		return false
 	}
@@ -735,7 +727,7 @@ func (r *Repository) SearchPackageInSources(packageName, version, architecture s
 	for _, section := range defaultSections {
 		url := r.buildPackageURLWithSection(packageName, version, architecture, section)
 
-		resp, err := http.Head(url)
+		resp, err := r.downloader().doRequestWithRetry(http.MethodHead, url, true)
 		if err != nil {
 			continue
 		}
@@ -806,15 +798,11 @@ func (r *Repository) IsReleaseVerificationEnabled() bool {
 
 // downloadAndParsePackagesWithVerification downloads and parses an uncompressed Packages file.
 func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, section, architecture string) ([]string, error) {
-	resp, err := http.Get(packagesURL)
+	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("impossible de récupérer le fichier Packages (HTTP %d)", resp.StatusCode)
-	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -832,15 +820,11 @@ func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, secti
 
 // downloadAndParseCompressedPackagesWithVerification downloads and parses a compressed Packages file.
 func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packagesURL, extension, section, architecture string) ([]string, error) {
-	resp, err := http.Get(packagesURL)
+	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la récupération du fichier Packages compressé: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("impossible de récupérer le fichier Packages compressé (HTTP %d)", resp.StatusCode)
-	}
 
 	reader, cleanup, err := r.createDecompressor(resp.Body, extension)
 	if err != nil {
@@ -1402,15 +1386,11 @@ func (r *Repository) parseReleaseFile(content string) (*ReleaseFile, error) {
 }
 
 func (r *Repository) fetchURL(url string) ([]byte, error) {
-	resp, err := http.Get(url)
+	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, url, true)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la récupération de %s: %w", url, err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("impossible de récupérer %s (HTTP %d)", url, resp.StatusCode)
-	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {

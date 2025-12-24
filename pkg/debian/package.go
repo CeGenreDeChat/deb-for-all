@@ -318,15 +318,12 @@ func (p *Package) GetDownloadInfo() (*DownloadInfo, error) {
 		return nil, fmt.Errorf("aucune URL de téléchargement spécifiée pour le paquet %s", p.Name)
 	}
 
-	resp, err := http.Head(p.DownloadURL)
+	downloader := NewDownloader()
+	resp, err := downloader.doRequestWithRetry(http.MethodHead, p.DownloadURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("erreur lors de la vérification de l'URL: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("URL non accessible: statut HTTP %d", resp.StatusCode)
-	}
 
 	return &DownloadInfo{
 		URL:           p.DownloadURL,
