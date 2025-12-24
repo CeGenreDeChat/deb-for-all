@@ -30,7 +30,7 @@
 ## Setup and Usage
 
 ### Prerequisites
-- Go 1.20+
+- Go 1.24+ (module declares go 1.24 / toolchain go1.24.5)
 - Python 3.8+
 - Git
 - make
@@ -42,13 +42,13 @@
 git clone https://github.com/CeGenreDeChat/deb-for-all.git
 cd deb-for-all
 
-# Build and test
+# Build the binary
 make
 
-# Build for all platforms (Windows/Linux)
+# Build for all platforms (linux/windows/darwin, amd64)
 make build-all
 
-# Run Robot Framework tests
+# Run Go command tests
 make test
 
 # Clean binaries and test results
@@ -56,15 +56,15 @@ make clean
 ```
 
 ### Available Make Targets
-| Command                 | Description                                      |
-|-------------------------|--------------------------------------------------|
-| `make`                  | Build and test.                                  |
-| `make build`            | Build for the local platform.                    |
-| `make build-darwin-64`  | Build for apple (arm64) plateforme apple (arm64) |
-| `make build-linux-64`   | Build for linux plateforme                       |
-| `make build-windows-64` | Build for windows plateforme                     |
-| `make test`             | Run Robot Framework tests.                       |
-| `make clean`            | Remove binaries and test results.                |
+| Command         | Description                                        |
+|-----------------|----------------------------------------------------|
+| `make` / `build`| Build the main binary into `bin/`.                  |
+| `make build-all`| Build linux/windows/darwin amd64 binaries.          |
+| `make build-linux`   | Build linux amd64 binary.                      |
+| `make build-windows` | Build windows amd64 binary.                    |
+| `make build-darwin`  | Build darwin amd64 binary.                     |
+| `make test`          | Run Go command tests (`go test ./cmd/deb-for-all/commands -v`). |
+| `make clean`         | Remove binaries and test results.              |
 
 ---
 
