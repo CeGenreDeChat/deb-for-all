@@ -874,6 +874,16 @@ func (r *Repository) createDecompressor(body io.Reader, extension string) (io.Re
 
 // parsePackagesData parses package metadata from Packages file content.
 func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
+	packagedNames, metadata, err := r.parsePackagesDataInternal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	r.PackageMetadata = metadata
+	return packagedNames, nil
+}
+
+func (r *Repository) parsePackagesDataInternal(data []byte) ([]string, []Package, error) {
 	var packages []string
 	var packageMetadata []Package
 
@@ -938,11 +948,10 @@ func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading Packages file: %w", err)
+		return nil, nil, fmt.Errorf("error reading Packages file: %w", err)
 	}
 
-	r.PackageMetadata = packageMetadata
-	return packages, nil
+	return packages, packageMetadata, nil
 }
 
 // finalizePackage sets default values for a package before storing.
@@ -1008,6 +1017,66 @@ func (r *Repository) verifyDecompressedFileChecksum(filename string, data []byte
 	}
 
 	return fmt.Errorf("no checksum found for file %s", filename)
+}
+
+// LoadCachedPackages loads Packages metadata from an existing cache directory
+// without performing any network requests.
+func (r *Repository) LoadCachedPackages(cacheDir string) ([]string, error) {
+	if cacheDir == "" {
+		return nil, fmt.Errorf("cache directory is required")
+	}
+
+	if r.Distribution == "" {
+		return nil, fmt.Errorf("distribution is required to load cache")
+	}
+
+	allPackages := make(map[string]bool)
+	metadata := make([]Package, 0)
+	var lastErr error
+	found := false
+
+	for _, section := range r.Sections {
+		for _, arch := range r.Architectures {
+			cachePath := filepath.Join(cacheDir, r.Distribution, section, fmt.Sprintf("binary-%s", arch), "Packages")
+
+			data, err := os.ReadFile(cachePath)
+			if err != nil {
+				if lastErr == nil {
+					lastErr = err
+				}
+				continue
+			}
+
+			names, pkgMetadata, err := r.parsePackagesDataInternal(data)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			for _, name := range names {
+				allPackages[name] = true
+			}
+			metadata = append(metadata, pkgMetadata...)
+			found = true
+		}
+	}
+
+	if !found {
+		if lastErr != nil {
+			return nil, fmt.Errorf("no cached packages found for %s: %w", r.Distribution, lastErr)
+		}
+		return nil, fmt.Errorf("no cached packages found for %s", r.Distribution)
+	}
+
+	packages := make([]string, 0, len(allPackages))
+	for name := range allPackages {
+		packages = append(packages, name)
+	}
+
+	r.PackageMetadata = metadata
+	r.Packages = packages
+
+	return packages, nil
 }
 
 // SetDistribution sets the active distribution (suite).

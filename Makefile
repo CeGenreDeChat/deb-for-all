@@ -1,6 +1,6 @@
 # Makefile for deb-for-all project
 
-.PHONY: all build clean test examples mirror-example package-example help
+.PHONY: all build clean test run install examples mirror-example package-example build-all build-linux build-windows build-darwin test-mirror test-download help help-examples
 
 # Variables
 BINARY_NAME = deb-for-all
@@ -32,7 +32,7 @@ clean:
 
 # Run tests
 test:
-	go test ./pkg/... -v
+	go test ./cmd/deb-for-all/commands -v
 
 # Run the built binary
 run: build
@@ -70,11 +70,11 @@ build-darwin:
 
 # Quick test of mirror functionality
 test-mirror: build
-	./$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) -command mirror -dest ./test-mirror -verbose
+	./$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) --no-gpg-verify mirror --dest ./test-mirror --verbose
 
 # Test package download
 test-download: build
-	./$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) -command download-source -package hello -version 2.10-2 -dest ./test-downloads -verbose
+	./$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) --no-gpg-verify download-source --package hello --dest ./test-downloads --verbose
 
 # Show help
 help:
@@ -98,22 +98,26 @@ help-examples:
 	@echo ""
 	@echo "# Mirror a Debian repository (metadata only)"
 	@echo "make test-mirror"
-	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) -command mirror -dest ./debian-mirror -verbose"
+	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) --no-gpg-verify mirror --dest ./debian-mirror --verbose"
 	@echo ""
 	@echo "# Mirror with packages (WARNING: Large download)"
-	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) -command mirror -dest ./debian-mirror -download-packages -verbose"
+	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) --no-gpg-verify mirror --dest ./debian-mirror --download-packages --verbose"
 	@echo ""
 	@echo "# Custom mirror configuration"
-	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) -command mirror \\"
-	@echo "  -url http://deb.debian.org/debian \\"
-	@echo "  -suites bookworm,bullseye \\"
-	@echo "  -components main,contrib \\"
-	@echo "  -architectures amd64,arm64 \\"
-	@echo "  -dest ./custom-mirror -verbose"
+	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) mirror \\" 
+	@echo "  --url http://deb.debian.org/debian \\" 
+	@echo "  --suites bookworm,bullseye \\" 
+	@echo "  --components main,contrib \\" 
+	@echo "  --architectures amd64,arm64 \\" 
+	@echo "  --dest ./custom-mirror --verbose"
 	@echo ""
 	@echo "# Download a source package"
 	@echo "make test-download"
-	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) -command download-source -package hello -version 2.10-2"
+	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) --no-gpg-verify download-source --package hello"
+	@echo ""
+	@echo "# Download using cached metadata (avoid re-fetching indexes)"
+	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) --no-gpg-verify update --cache ./cache --suites bookworm --components main --architectures amd64"
+	@echo "$(BUILD_DIR)/$(BINARY_NAME)$(BINARY_EXT) --no-gpg-verify download --package curl --cache ./cache --suites bookworm --components main --architectures amd64 --dest ./downloads"
 	@echo ""
 	@echo "# Run interactive examples"
 	@echo "make mirror-example"

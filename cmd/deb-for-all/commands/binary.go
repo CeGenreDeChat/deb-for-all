@@ -9,7 +9,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func DownloadBinaryPackage(packageName, version, baseURL string, suites, components, architectures []string, destDir string, silent bool, keyrings []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
+func DownloadBinaryPackage(packageName, version, baseURL string, suites, components, architectures []string, destDir, cacheDir string, silent bool, keyrings []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
 	if !silent {
 		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "command.download.start",
@@ -66,11 +66,34 @@ func DownloadBinaryPackage(packageName, version, baseURL string, suites, compone
 		fmt.Println("...")
 	}
 
-	if _, err = repo.FetchPackages(); err != nil {
-		return fmt.Errorf("error retrieving packages: %w", err)
+	usedCache := false
+	if cacheDir != "" {
+		if _, err = repo.LoadCachedPackages(cacheDir); err == nil {
+			usedCache = true
+		} else if !silent {
+			fmt.Printf("Cache introuvable ou invalide dans %s, récupération distante...\n", cacheDir)
+		}
+	}
+
+	if !usedCache {
+		if _, err = repo.FetchPackages(); err != nil {
+			return fmt.Errorf("error retrieving packages: %w", err)
+		}
 	}
 
 	pkgMetadata, err := repo.GetPackageMetadataWithArch(packageName, version, architectures)
+	if err != nil && usedCache {
+		if !silent {
+			fmt.Println("Paquet introuvable dans le cache, récupération distante des métadonnées...")
+		}
+
+		if _, fetchErr := repo.FetchPackages(); fetchErr != nil {
+			return fmt.Errorf("error retrieving packages: %w", fetchErr)
+		}
+
+		pkgMetadata, err = repo.GetPackageMetadataWithArch(packageName, version, architectures)
+	}
+
 	if err != nil {
 		return fmt.Errorf("error retrieving metadata for package %s: %w", packageName, err)
 	}

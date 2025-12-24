@@ -11,6 +11,7 @@
 - Download binary and source packages with progress tracking
 - Checksum verification and retry mechanisms
 - Concurrent downloads for multiple packages
+- Cache-aware downloads reuse metadata fetched via `update` when available
 
 ### 🔄 Repository Mirroring
 - **Complete mirror creation** of Debian repositories
@@ -86,6 +87,7 @@ export DEB_FOR_ALL_LANG=fr
 ### Global Flags
 - `--keyring` (comma-separated) trusted GPG keyring files for Release/InRelease verification.
 - `--no-gpg-verify` disable GPG signature verification (checksum verification remains).
+- `--cache` path to a metadata cache directory (reuse Release/Packages downloaded via `update`).
 
 ### Commands
 
@@ -104,6 +106,7 @@ deb-for-all download -p <package-name> [flags]
 | `--components` | - | Components (comma-separated) | `main` |
 | `--architectures` | - | Architectures (comma-separated; first value is selected) | `amd64` |
 | `--dest` | `-d` | Destination directory | `./downloads` |
+| `--cache` | - | Metadata cache directory (skips re-fetching Packages when present) | `./cache` |
 | `--silent` | `-s` | Suppress output | `false` |
 | `--verbose` | `-v` | Verbose output | `false` |
 
@@ -115,6 +118,15 @@ deb-for-all download \
    --package curl \
    --version 7.88.1-10 \
    --dest ./packages
+
+**Example (cached metadata to avoid re-fetching):**
+```bash
+# Populate cache once
+deb-for-all update --suites bookworm --components main --architectures amd64 --cache ./cache --no-gpg-verify
+
+# Download using cached Packages metadata
+deb-for-all download --package curl --cache ./cache --suites bookworm --components main --architectures amd64 --dest ./packages --no-gpg-verify
+```
 ```
 
 #### Download Source Package
