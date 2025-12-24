@@ -397,41 +397,6 @@ func (m *Mirror) preparePackageForDownload(packageName, component, arch string) 
 	return pkg
 }
 
-// downloadPackageByName downloads a single package by name.
-func (m *Mirror) downloadPackageByName(packageName, component, arch string) error {
-	pkg := m.getPackageMetadataOrFallback(packageName, arch)
-
-	// Use source name for directory structure
-	sourceName := pkg.GetSourceName()
-	poolPrefix := getPoolPrefix(sourceName)
-
-	packageDir := filepath.Join(m.basePath, "pool", component, poolPrefix, sourceName)
-	if err := os.MkdirAll(packageDir, DirPermission); err != nil {
-		return fmt.Errorf("failed to create package directory: %w", err)
-	}
-
-	m.logVerbose("Downloading package: %s (source: %s) to directory: %s\n", packageName, sourceName, packageDir)
-
-	// Use download URL from metadata if available, otherwise construct it
-	if pkg.DownloadURL == "" {
-		pkg.DownloadURL = fmt.Sprintf("%s/pool/%s/%s/%s/%s", m.config.BaseURL, component, poolPrefix, sourceName, pkg.Filename)
-	}
-
-	destPath := filepath.Join(packageDir, getPackageFilename(pkg))
-	skip, err := m.downloader.ShouldSkipDownload(pkg, destPath)
-	if err != nil {
-		return fmt.Errorf("failed to check existing file for %s: %w", pkg.Name, err)
-	}
-	if skip {
-		m.logVerbose("Skipping download for %s (existing file matches checksum)\n", pkg.Name)
-		return nil
-	}
-
-	fmt.Printf("Downloading %s to %s\n", pkg.DownloadURL, packageDir)
-
-	return m.downloader.DownloadToDir(pkg, packageDir)
-}
-
 // getPackageMetadataOrFallback tries to get package metadata from repository,
 // falling back to a constructed Package if not available.
 func (m *Mirror) getPackageMetadataOrFallback(packageName, arch string) *Package {
