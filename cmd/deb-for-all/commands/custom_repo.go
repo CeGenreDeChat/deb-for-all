@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/CeGenreDeChat/deb-for-all/pkg/debian"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
@@ -22,7 +23,7 @@ type xmlPackageEntry struct {
 
 // BuildCustomRepository builds a custom repository subset from an XML package list,
 // resolves dependencies (with optional exclusions), and downloads the resulting packages.
-func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings []string, skipGPGVerify, verbose bool, localizer *i18n.Localizer) error {
+func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings []string, skipGPGVerify, verbose bool, rateLimit int, localizer *i18n.Localizer) error {
 	if packagesXML == "" {
 		return fmt.Errorf("packages XML file is required")
 	}
@@ -69,6 +70,7 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 
 		packageMetadata := make(map[string]map[string][]debian.Package)
 		downloader := debian.NewDownloader()
+		downloader.RateDelay = time.Duration(rateLimit) * time.Second
 
 		for _, component := range componentList {
 			repo.SetSections([]string{component})

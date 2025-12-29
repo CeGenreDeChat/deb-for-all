@@ -34,6 +34,7 @@
 "flag.architectures" = "Architectures to mirror (comma-separated, default: amd64)"
 "flag.download_packages" = "Download .deb packages (not just metadata)"
 "flag.verbose" = "Verbose output"
+"flag.rate_limit" = "Delay in seconds between HTTP requests for .deb downloads (0 = no delay, forces sequential mode)"
 
 # Errors
 "error.unknown_command" = "Unknown command: {{.Command}}"

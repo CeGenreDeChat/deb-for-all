@@ -23,14 +23,15 @@ const (
 
 // MirrorConfig contains the configuration for a mirror operation.
 type MirrorConfig struct {
-	BaseURL          string   // Repository URL to mirror from
-	Suites           []string // Distributions to mirror (e.g., bookworm, bullseye)
-	Components       []string // Components to mirror (e.g., main, contrib, non-free)
-	Architectures    []string // Architectures to mirror (e.g., amd64, arm64)
-	DownloadPackages bool     // Whether to download .deb package files
-	Verbose          bool     // Enable verbose logging
-	KeyringPaths     []string // Trusted keyring files for signature verification
-	SkipGPGVerify    bool     // Disable GPG verification when true
+	BaseURL          string        // Repository URL to mirror from
+	Suites           []string      // Distributions to mirror (e.g., bookworm, bullseye)
+	Components       []string      // Components to mirror (e.g., main, contrib, non-free)
+	Architectures    []string      // Architectures to mirror (e.g., amd64, arm64)
+	DownloadPackages bool          // Whether to download .deb package files
+	Verbose          bool          // Enable verbose logging
+	KeyringPaths     []string      // Trusted keyring files for signature verification
+	SkipGPGVerify    bool          // Disable GPG verification when true
+	RateDelay        time.Duration // Delay between HTTP requests for .deb downloads; forces sequential mode when > 0
 }
 
 // Validate checks that all required fields are set and valid.
@@ -82,10 +83,13 @@ func NewMirror(config MirrorConfig, basePath string) *Mirror {
 		repo.DisableSignatureVerification()
 	}
 
+	downloader := NewDownloader()
+	downloader.RateDelay = config.RateDelay
+
 	return &Mirror{
 		config:     config,
 		repository: repo,
-		downloader: NewDownloader(),
+		downloader: downloader,
 		basePath:   basePath,
 	}
 }

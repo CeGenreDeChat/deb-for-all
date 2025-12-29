@@ -50,6 +50,7 @@ func TestCustomRepoSystemdWithoutRecommendsIntegration(t *testing.T) {
 		nil,
 		true,
 		false,
+		0,
 		localizer,
 	); err != nil {
 		t.Fatalf("custom-repo build failed: %v", err)
@@ -104,6 +105,7 @@ func TestCustomRepoSinglePackageNoDependenciesIntegration(t *testing.T) {
 		nil,
 		true,
 		false,
+		0,
 		localizer,
 	); err != nil {
 		t.Fatalf("custom-repo build failed: %v", err)

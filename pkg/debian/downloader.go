@@ -32,6 +32,7 @@ type Downloader struct {
 	Timeout         time.Duration
 	RetryAttempts   int
 	VerifyChecksums bool
+	RateDelay       time.Duration // Delay between requests; forces sequential downloads when > 0
 }
 
 // NewDownloader creates a new Downloader with default settings.
@@ -259,9 +260,15 @@ type downloadResult struct {
 
 // DownloadMultiple downloads multiple packages concurrently.
 // maxConcurrent specifies the number of parallel downloads (defaults to 5).
+// When RateDelay > 0, forces sequential downloads (1 worker) with the specified delay between requests.
 func (d *Downloader) DownloadMultiple(packages []*Package, destDir string, maxConcurrent int) []error {
 	if maxConcurrent <= 0 {
 		maxConcurrent = defaultConcurrency
+	}
+
+	// Force sequential downloads when rate limiting is enabled
+	if d.RateDelay > 0 {
+		maxConcurrent = 1
 	}
 
 	jobs := make(chan downloadJob, len(packages))
@@ -273,7 +280,13 @@ func (d *Downloader) DownloadMultiple(packages []*Package, destDir string, maxCo
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			firstJob := true
 			for job := range jobs {
+				// Apply rate limiting delay before each download (except the first)
+				if d.RateDelay > 0 && !firstJob {
+					time.Sleep(d.RateDelay)
+				}
+				firstJob = false
 				err := d.DownloadWithProgress(job.pkg, job.destPath, nil)
 				results <- downloadResult{pkg: job.pkg, err: err}
 			}

@@ -34,6 +34,7 @@
 "flag.architectures" = "Architectures à mettre en miroir (séparées par des virgules, défaut: amd64)"
 "flag.download_packages" = "Télécharger les paquets .deb (pas seulement les métadonnées)"
 "flag.verbose" = "Affichage verbeux"
+"flag.rate_limit" = "Délai en secondes entre les requêtes HTTP pour les .deb (0 = pas de délai, force le mode séquentiel)"
 
 # Errors
 "error.unknown_command" = "Commande inconnue: {{.Command}}"

@@ -3,12 +3,13 @@ package commands
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/CeGenreDeChat/deb-for-all/pkg/debian"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func CreateMirror(baseURL, suites, components, architectures, destDir string, downloadPkgs, verbose bool, keyrings []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
+func CreateMirror(baseURL, suites, components, architectures, destDir string, downloadPkgs, verbose bool, keyrings []string, skipGPGVerify bool, rateLimit int, localizer *i18n.Localizer) error {
 	if verbose {
 		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "command.mirror.start",
@@ -51,6 +52,7 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 		Verbose:          verbose,
 		KeyringPaths:     keyrings,
 		SkipGPGVerify:    skipGPGVerify,
+		RateDelay:        time.Duration(rateLimit) * time.Second,
 	}
 
 	for _, suite := range suiteList {

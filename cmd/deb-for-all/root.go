@@ -80,6 +80,7 @@ func initCommands() {
 	mirrorCmd.Flags().StringVar(&config.Components, "components", "main", localize("flag.components"))
 	mirrorCmd.Flags().StringVar(&config.Architectures, "architectures", "amd64", localize("flag.architectures"))
 	mirrorCmd.Flags().BoolVar(&config.DownloadPkgs, "download-packages", false, localize("flag.download_packages"))
+	mirrorCmd.Flags().IntVar(&config.RateLimit, "rate-limit", 0, localize("flag.rate_limit"))
 	rootCmd.AddCommand(mirrorCmd)
 
 	// Commande `custom-repo`
@@ -96,6 +97,7 @@ func initCommands() {
 	customRepoCmd.Flags().StringVar(&config.Architectures, "architectures", "amd64", localize("flag.architectures"))
 	customRepoCmd.Flags().StringVar(&config.PackagesXML, "packages-xml", "", localize("flag.packages_xml"))
 	customRepoCmd.Flags().StringVar(&config.ExcludeDeps, "exclude-deps", "", localize("flag.exclude_deps"))
+	customRepoCmd.Flags().IntVar(&config.RateLimit, "rate-limit", 0, localize("flag.rate_limit"))
 	customRepoCmd.MarkFlagRequired("packages-xml")
 	rootCmd.AddCommand(customRepoCmd)
 }
