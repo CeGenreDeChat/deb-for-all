@@ -79,7 +79,7 @@ func initCommands() {
 	mirrorCmd.Flags().StringVar(&config.Suites, "suites", "bookworm", localize("flag.suites"))
 	mirrorCmd.Flags().StringVar(&config.Components, "components", "main", localize("flag.components"))
 	mirrorCmd.Flags().StringVar(&config.Architectures, "architectures", "amd64", localize("flag.architectures"))
-	mirrorCmd.Flags().BoolVar(&config.DownloadPkgs, "download-packages", false, localize("flag.download_packages"))
+	mirrorCmd.Flags().BoolVar(&config.MetadataOnly, "metadata-only", false, localize("flag.metadata_only"))
 	mirrorCmd.Flags().IntVar(&config.RateLimit, "rate-limit", 0, localize("flag.rate_limit"))
 	rootCmd.AddCommand(mirrorCmd)
 

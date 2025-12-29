@@ -34,7 +34,7 @@ type Config struct {
 	Suites        string
 	Components    string
 	Architectures string
-	DownloadPkgs  bool
+	MetadataOnly  bool
 	Verbose       bool
 	RateLimit     int
 }
@@ -80,7 +80,7 @@ func run() error {
 	case "download-source":
 		return commands.DownloadSourcePackage(config.PackageName, config.Version, config.BaseURL, suites, components, architectures, config.DestDir, config.OrigOnly, config.Silent, localizer)
 	case "mirror":
-		return commands.CreateMirror(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.DownloadPkgs, config.Verbose, keyrings, config.NoGPGVerify, config.RateLimit, localizer)
+		return commands.CreateMirror(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, !config.MetadataOnly, config.Verbose, keyrings, config.NoGPGVerify, config.RateLimit, localizer)
 	case "update":
 		return commands.UpdateCache(config.BaseURL, config.Suites, config.Components, config.Architectures, config.CacheDir, config.Verbose, keyrings, config.NoGPGVerify, localizer)
 	case "custom-repo":
