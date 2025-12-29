@@ -139,9 +139,10 @@ cfg := debian.MirrorConfig{
     Suites:           []string{"bookworm"},
     Components:       []string{"main"},
     Architectures:    []string{"amd64"},
-    DownloadPackages: true,  // set false for metadata-only
+    DownloadPackages: true,  // default; set false for metadata-only mirrors
     Verbose:          true,
     SkipGPGVerify:    true,  // set false to enforce signatures
+    RateDelay:        0,     // delay between .deb downloads; >0 forces sequential mode (useful for legacy repos)
 }
 
 mirror := debian.NewMirror(cfg, "./mirror")

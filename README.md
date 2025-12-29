@@ -32,7 +32,6 @@
 
 ### Prerequisites
 - Go 1.24+ (module declares go 1.24 / toolchain go1.24.5)
-- Python 3.8+
 - Git
 - make
 
@@ -215,19 +214,23 @@ deb-for-all mirror [flags]
 | `--components` | - | Comma-separated list of components | `main` |
 | `--architectures` | - | Comma-separated list of architectures | `amd64` |
 | `--dest` | `-d` | Destination directory | `./downloads` |
-| `--download-packages` | - | Download actual packages (not just metadata) | `false` |
+| `--metadata-only` | - | Download only metadata (Release/Packages), skip .deb files | `false` |
+| `--rate-limit` | - | Delay in seconds between HTTP requests for .deb downloads (forces sequential mode) | `0` |
 | `--verbose` | `-v` | Verbose output | `false` |
 
 **Examples:**
 ```bash
-# Mirror metadata only
+# Full mirror (metadata + packages, default behavior)
 deb-for-all mirror -u http://deb.debian.org/debian --suites bookworm -d ./mirror
 
-# Mirror with packages
-deb-for-all mirror --suites bookworm,bullseye --components main,contrib --download-packages -d ./mirror -v
+# Mirror metadata only (no .deb files)
+deb-for-all mirror --suites bookworm --components main --metadata-only -d ./mirror
 
-# Mirror multiple architectures
-deb-for-all mirror --architectures amd64,arm64 --suites bookworm -d ./mirror
+# Mirror with rate limiting (for legacy/slow repositories)
+deb-for-all mirror --suites wheezy --url http://archive.debian.org/debian --rate-limit 2 --no-gpg-verify -d ./mirror
+
+# Mirror multiple suites and architectures
+deb-for-all mirror --suites bookworm,bullseye --components main,contrib --architectures amd64,arm64 -d ./mirror -v
 ```
 
 ---

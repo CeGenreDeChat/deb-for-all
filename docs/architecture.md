@@ -49,6 +49,7 @@ Consumers: CLI commands, mirror, integration tests
 
 ## pkg/debian/downloader.go — HTTP, retries, and integrity
 - HTTP pipeline: `Downloader` encapsulates UA, timeouts, retry/backoff (3 attempts, 2s delay), and optional progress callbacks; concurrency defaults to 5 for multi-downloads.
+- Rate limiting: `RateDelay` field enables sequential downloads with configurable delay between requests; useful for legacy repositories that cannot handle high request rates.
 - Integrity: verifies checksums (prefers SHA256, falls back to MD5), and can short-circuit downloads when local files match expected hashes.
 - APIs: `DownloadToDir` (single artifact), `DownloadMultiple` (batched with worker pool), plus internal helpers for filename generation and retry logic; uses shared permissions from package.go.
 - Consumers: called by CLI commands (binary/source/custom repo), repository/mirror flows, and integration tests that validate real HTTP fetches.
@@ -65,12 +66,14 @@ DownloadToDir(pkg)
         -> verify checksum (prefer SHA256 else MD5)
 
 DownloadMultiple(pkgs, workers=5)
-        -> worker pool executes DownloadToDir in parallel
+        -> if RateDelay > 0: force workers=1, sleep between downloads
+        -> worker pool executes DownloadToDir in parallel (or sequential with delay)
 ```
 
 ## pkg/debian/mirror.go — Mirror orchestration
-- Configuration: `MirrorConfig` validates base URL, suites, components, arches, and toggles for package downloads, verbosity, and GPG verification.
+- Configuration: `MirrorConfig` validates base URL, suites, components, arches, and toggles for package downloads, verbosity, GPG verification, and rate limiting for legacy repos.
 - Orchestration: `Mirror` composes a `Repository` and `Downloader` to fetch metadata, materialize Release/Packages files locally, and optionally download `.deb` files into Debian pool layout (dists/ and pool/ with prefix rules).
+- Rate limiting: `RateDelay` propagates to the downloader to throttle requests when mirroring legacy repositories that cannot handle high concurrency.
 - Operations: `Clone` builds a full mirror; `Sync` currently reuses Clone as a placeholder for future incremental logic. Helper methods compute suite/component paths, regenerate Release checksum sections, and emit verbose logs when requested.
 
 Schematic (mirror flow)
