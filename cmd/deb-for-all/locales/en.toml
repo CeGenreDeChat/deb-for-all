@@ -8,6 +8,8 @@
 "command.download_source.orig_only" = "Mode: original tarball only"
 "command.download_source.success" = "Source package {{.Package}} downloaded successfully to {{.Dest}}"
 "command.mirror" = "Create a mirror of a Debian repository"
+"command.mirror.start" = "Starting mirror from {{.URL}}"
+"command.mirror.details" = "Suites: {{.Suites}}, Components: {{.Components}}, Architectures: {{.Architectures}}, Destination: {{.Dest}}"
 "command.update" = "Update local package index cache"
 "command.update.start" = "Updating cache from {{.URL}} (suites: {{.Suites}}, components: {{.Components}}, architectures: {{.Architectures}}, dest: {{.Dest}})"
 "command.update.suite" = "Caching packages for suite {{.Suite}}"
