@@ -95,8 +95,21 @@ By default, `deb-for-all` verifies GPG signatures of Release files to ensure rep
 
 **Default Behavior:**
 If no keyrings are specified, the tool searches for trusted keys in standard system locations:
-- Files: `/usr/share/keyrings/debian-archive-keyring.gpg`, `/usr/share/keyrings/ubuntu-archive-keyring.gpg`
-- Directory: `/etc/apt/trusted.gpg.d/*.gpg`
+
+- **Linux:**
+  - Files: `/usr/share/keyrings/debian-archive-keyring.gpg`, `/usr/share/keyrings/ubuntu-archive-keyring.gpg`
+  - Directory: `/etc/apt/trusted.gpg.d/*.gpg`
+
+- **Windows:**
+  - User Keyrings: `%APPDATA%\gnupg\pubring.kbx`
+  - System Keyrings (Gpg4win): `%ProgramFiles%\GnuPG\share\gnupg\*.gpg`
+  - Directories: `%APPDATA%\gnupg`, `%LOCALAPPDATA%\GnuPG`
+  - *Note: Requires [Gpg4win](https://www.gpg4win.org/) installed or `gpgv.exe` in PATH.*
+
+- **macOS:**
+  - Homebrew (Intel): `/usr/local/share/keyrings/*.gpg`
+  - Homebrew (Apple Silicon): `/opt/homebrew/share/keyrings/*.gpg`
+  - User Keyrings: `~/.gnupg/pubring.kbx`
 
 **Custom Keyrings:**
 You can specify custom keyrings using `--keyring` or `--keyring-dir`.

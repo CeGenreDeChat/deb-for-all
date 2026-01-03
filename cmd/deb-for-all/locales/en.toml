@@ -49,4 +49,5 @@
 "error.validation.fetch_release" = "Failed to fetch Release file"
 "error.validation.release_unavailable" = "Release information unavailable for validation"
 "error.custom_repo.unknown_dependency_kind" = "Unknown dependency kind '{{.Kind}}' (allowed: {{.Allowed}})"
+"error.gpg.not_found_windows" = "gpgv executable not found: please install Gpg4win from https://www.gpg4win.org/ or add gpgv.exe to your PATH"
 "command.download.skip_existing" = "✓ Package {{.Package}} already present with valid checksum; skipping download"

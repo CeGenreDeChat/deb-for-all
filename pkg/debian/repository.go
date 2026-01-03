@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,15 +31,112 @@ const (
 // Default repository sections for package search.
 var defaultSections = []string{"main", "contrib", "non-free"}
 
-// DefaultKeyringPaths contains standard system locations for GPG keyrings.
-var DefaultKeyringPaths = []string{
-	"/usr/share/keyrings/debian-archive-keyring.gpg",
-	"/usr/share/keyrings/ubuntu-archive-keyring.gpg",
+// ErrGPGNotFound is returned when gpgv executable cannot be found on Windows.
+var ErrGPGNotFound = fmt.Errorf("gpgv executable not found: please install Gpg4win from https://www.gpg4win.org/ or add gpgv.exe to your PATH")
+
+// GetDefaultKeyringPaths returns standard system locations for GPG keyrings based on OS.
+func GetDefaultKeyringPaths() []string {
+	switch runtime.GOOS {
+	case "windows":
+		var paths []string
+		// GnuPG for Windows (Gpg4win) - user keyrings
+		if appdata := os.Getenv("APPDATA"); appdata != "" {
+			pubring := filepath.Join(appdata, "gnupg", "pubring.kbx")
+			if info, err := os.Stat(pubring); err == nil && !info.IsDir() {
+				paths = append(paths, pubring)
+			}
+		}
+		// Gpg4win system installation
+		if programFiles := os.Getenv("ProgramFiles"); programFiles != "" {
+			shareDir := filepath.Join(programFiles, "GnuPG", "share", "gnupg")
+			if matches, err := filepath.Glob(filepath.Join(shareDir, "*.gpg")); err == nil {
+				paths = append(paths, matches...)
+			}
+		}
+		return paths
+	case "darwin":
+		var paths []string
+		// Homebrew Intel
+		paths = append(paths, "/usr/local/share/keyrings/debian-archive-keyring.gpg")
+		paths = append(paths, "/usr/local/share/keyrings/ubuntu-archive-keyring.gpg")
+		// Homebrew Apple Silicon
+		paths = append(paths, "/opt/homebrew/share/keyrings/debian-archive-keyring.gpg")
+		paths = append(paths, "/opt/homebrew/share/keyrings/ubuntu-archive-keyring.gpg")
+		// User GnuPG
+		if home := os.Getenv("HOME"); home != "" {
+			paths = append(paths, filepath.Join(home, ".gnupg", "pubring.kbx"))
+		}
+		return paths
+	default: // linux, freebsd, etc.
+		return []string{
+			"/usr/share/keyrings/debian-archive-keyring.gpg",
+			"/usr/share/keyrings/ubuntu-archive-keyring.gpg",
+		}
+	}
 }
 
-// DefaultKeyringDirs contains directories that may contain multiple keyring files.
-var DefaultKeyringDirs = []string{
-	"/etc/apt/trusted.gpg.d",
+// GetDefaultKeyringDirs returns directories that may contain multiple keyring files based on OS.
+func GetDefaultKeyringDirs() []string {
+	switch runtime.GOOS {
+	case "windows":
+		var dirs []string
+		// User GnuPG directory
+		if appdata := os.Getenv("APPDATA"); appdata != "" {
+			gnupgDir := filepath.Join(appdata, "gnupg")
+			if info, err := os.Stat(gnupgDir); err == nil && info.IsDir() {
+				dirs = append(dirs, gnupgDir)
+			}
+		}
+		// Local app data GnuPG
+		if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+			gnupgDir := filepath.Join(localAppData, "GnuPG")
+			if info, err := os.Stat(gnupgDir); err == nil && info.IsDir() {
+				dirs = append(dirs, gnupgDir)
+			}
+		}
+		return dirs
+	case "darwin":
+		var dirs []string
+		dirs = append(dirs, "/usr/local/share/keyrings")
+		dirs = append(dirs, "/opt/homebrew/share/keyrings")
+		if home := os.Getenv("HOME"); home != "" {
+			dirs = append(dirs, filepath.Join(home, ".gnupg"))
+		}
+		return dirs
+	default:
+		return []string{"/etc/apt/trusted.gpg.d"}
+	}
+}
+
+// getGPGVCommand returns the gpgv executable path for the current OS.
+// On Windows, it searches common Gpg4win installation paths.
+// Returns an error if gpgv is not found on Windows.
+func getGPGVCommand() (string, error) {
+	if runtime.GOOS == "windows" {
+		// Try common Windows installation paths for Gpg4win
+		commonPaths := []string{}
+		if programFiles := os.Getenv("ProgramFiles"); programFiles != "" {
+			commonPaths = append(commonPaths, filepath.Join(programFiles, "GnuPG", "bin", "gpgv.exe"))
+		}
+		if programFilesX86 := os.Getenv("ProgramFiles(x86)"); programFilesX86 != "" {
+			commonPaths = append(commonPaths, filepath.Join(programFilesX86, "GnuPG", "bin", "gpgv.exe"))
+		}
+		// Also check PATH
+		if path, err := exec.LookPath("gpgv.exe"); err == nil {
+			return path, nil
+		}
+		if path, err := exec.LookPath("gpgv"); err == nil {
+			return path, nil
+		}
+		for _, p := range commonPaths {
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+				return p, nil
+			}
+		}
+		return "", ErrGPGNotFound
+	}
+	// On Unix-like systems, assume gpgv is in PATH
+	return "gpgv", nil
 }
 
 // PackageInfo contains lightweight package information for search results.
@@ -849,15 +947,15 @@ func resolveKeyringPaths(paths, dirs []string) []string {
 func discoverDefaultKeyrings() []string {
 	var keyrings []string
 
-	// Check default keyring files
-	for _, path := range DefaultKeyringPaths {
+	// Check default keyring files (OS-aware)
+	for _, path := range GetDefaultKeyringPaths() {
 		if info, err := os.Stat(path); err == nil && !info.IsDir() {
 			keyrings = append(keyrings, path)
 		}
 	}
 
-	// Expand default keyring directories
-	for _, dir := range DefaultKeyringDirs {
+	// Expand default keyring directories (OS-aware)
+	for _, dir := range GetDefaultKeyringDirs() {
 		keyrings = append(keyrings, expandKeyringDir(dir)...)
 	}
 
@@ -1578,6 +1676,12 @@ func (r *Repository) verifyDetachedSignature(payload, signature []byte) error {
 }
 
 func (r *Repository) verifyWithGPG(payload, signature []byte, clearsigned bool) error {
+	// Get gpgv executable (OS-aware, returns error on Windows if not found)
+	gpgvPath, err := getGPGVCommand()
+	if err != nil {
+		return err
+	}
+
 	releaseFile, err := os.CreateTemp("", "deb-release-*.txt")
 	if err != nil {
 		return fmt.Errorf("unable to create temp file for release: %w", err)
@@ -1617,7 +1721,7 @@ func (r *Repository) verifyWithGPG(payload, signature []byte, clearsigned bool) 
 		args = append(args, signatureFile, releaseFile.Name())
 	}
 
-	cmd := exec.Command("gpgv", args...)
+	cmd := exec.Command(gpgvPath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("gpg verification failed: %w: %s", err, string(output))
