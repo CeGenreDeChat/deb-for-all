@@ -29,7 +29,8 @@ const (
 )
 
 // Default repository sections for package search.
-var defaultSections = []string{"main", "contrib", "non-free"}
+// Note: non-free-firmware was introduced in Debian 12 (Bookworm).
+var defaultSections = []string{"main", "contrib", "non-free", "non-free-firmware"}
 
 // ErrGPGNotFound is returned when gpgv executable cannot be found on Windows.
 var ErrGPGNotFound = fmt.Errorf("gpgv executable not found: please install Gpg4win from https://www.gpg4win.org/ or add gpgv.exe to your PATH")

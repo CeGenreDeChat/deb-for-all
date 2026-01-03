@@ -25,6 +25,7 @@ Used by
 
 ## pkg/debian/repository.go — Metadata fetch and dependency resolution
 - Repository lifecycle: `NewRepository` wires suite/component/arch, signature verification, and keyrings; `FetchReleaseFile` downloads Release/InRelease with optional signature checks; `FetchPackages` pulls Packages indices per section/arch.
+- GPG Verification: `verifyWithGPG` handles signature validation using `gpgv`. It supports cross-platform execution by detecting the OS (`runtime.GOOS`) to locate keyrings (Linux defaults, Windows Gpg4win/AppData, macOS Homebrew) and the `gpgv` executable.
 - Parsing: handles gzip/xz compressed Packages files, Release checksum sections, and RFC822-style package stanzas via shared field mapping to `Package` structs.
 - Dependency resolution: `ResolveDependencies` performs apt-like traversal with configurable exclusions (depends, pre-depends, recommends, suggests, enhances) and selects available alternatives within the fetched metadata.
 - URL/build helpers: constructs Release/Packages URLs, pools architecture/section context, and exposes getters (`GetPackageMetadata`, `GetAllPackageMetadata`) for downstream consumers like mirror and CLI commands.

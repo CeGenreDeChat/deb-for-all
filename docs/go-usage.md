@@ -25,7 +25,14 @@ repo := debian.NewRepository(
     []string{"main"},
     []string{"amd64"},
 )
-repo.DisableSignatureVerification() // keep or remove based on your trust policy
+
+// Optional: Configure GPG keyrings (defaults to OS-specific system paths if empty)
+// On Windows, this looks in %APPDATA%\gnupg and %ProgramFiles%\GnuPG
+// On Linux, it checks /usr/share/keyrings and /etc/apt/trusted.gpg.d
+// repo.SetKeyringPathsWithDirs([]string{"/path/to/keyring.gpg"}, nil)
+
+// Disable verification if needed
+// repo.DisableSignatureVerification()
 
 names, err := repo.FetchPackages()
 if err != nil {
@@ -80,16 +87,16 @@ destPath := filepath.Join(destDir, filepath.Base(pkgMeta.Filename))
 
 d := debian.NewDownloader()
 
-    if skip, err := d.ShouldSkipDownload(pkgMeta, destPath); err != nil {
-        // handle stat/checksum error
-    } else if !skip {
-        if err := d.DownloadWithProgress(pkgMeta, destPath, func(filename string, downloaded, total int64) {
-            // See 'Progress callback: func(filename string, downloaded, total int64)' section above for details.
-            // update progress
-        }); err != nil {
-            // handle download failure
-        }
+if skip, err := d.ShouldSkipDownload(pkgMeta, destPath); err != nil {
+    // handle stat/checksum error
+} else if !skip {
+    if err := d.DownloadWithProgress(pkgMeta, destPath, func(filename string, downloaded, total int64) {
+        // See 'Progress callback: func(filename string, downloaded, total int64)' section above for details.
+        // update progress
+    }); err != nil {
+        // handle download failure
     }
+}
 ```
 
 ## Download source packages

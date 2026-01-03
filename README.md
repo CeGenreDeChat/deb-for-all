@@ -115,6 +115,27 @@ If no keyrings are specified, the tool searches for trusted keys in standard sys
 You can specify custom keyrings using `--keyring` or `--keyring-dir`.
 **Important:** When you provide custom keyrings, the default system keyrings are **ignored**. You must explicitly include them if you still want to use them.
 
+### Repository Compatibility
+
+This tool supports Debian versions 9 (Stretch) through 13 (Trixie) with the following considerations:
+
+| Version | Codename | Repository URL | Notable Changes |
+|---------|----------|----------------|----------------|
+| **9** | Stretch | `http://archive.debian.org/debian` | Archived, use `--no-gpg-verify` and `--rate-limit` |
+| **10** | Buster | `http://deb.debian.org/debian` | - |
+| **11** | Bullseye | `http://deb.debian.org/debian` | Removed `armel`, `mips` architectures |
+| **12** | Bookworm | `http://deb.debian.org/debian` | Added `non-free-firmware` component |
+| **13** | Trixie | `http://deb.debian.org/debian` | Added `riscv64` architecture |
+
+**Archived Distributions (Stretch, Wheezy, etc.):**
+- Use `http://archive.debian.org/debian` instead of `deb.debian.org`
+- GPG keys may be expired; use `--no-gpg-verify` if needed
+- Consider `--rate-limit 2` to avoid overwhelming the archive server
+
+**Components:**
+- `main`, `contrib`, `non-free` are available in all versions
+- `non-free-firmware` is only available in Debian 12+ (Bookworm, Trixie)
+
 ### Commands
 
 #### Download Binary Package
