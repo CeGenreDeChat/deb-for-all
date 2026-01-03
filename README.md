@@ -85,8 +85,22 @@ export DEB_FOR_ALL_LANG=fr
 
 ### Global Flags
 - `--keyring` (comma-separated) trusted GPG keyring files for Release/InRelease verification.
+- `--keyring-dir` (comma-separated) directories containing trusted GPG keyrings (e.g. /etc/apt/trusted.gpg.d).
 - `--no-gpg-verify` disable GPG signature verification (checksum verification remains).
 - `--cache` path to a metadata cache directory (reuse Release/Packages downloaded via `update`).
+
+### GPG Verification
+
+By default, `deb-for-all` verifies GPG signatures of Release files to ensure repository integrity.
+
+**Default Behavior:**
+If no keyrings are specified, the tool searches for trusted keys in standard system locations:
+- Files: `/usr/share/keyrings/debian-archive-keyring.gpg`, `/usr/share/keyrings/ubuntu-archive-keyring.gpg`
+- Directory: `/etc/apt/trusted.gpg.d/*.gpg`
+
+**Custom Keyrings:**
+You can specify custom keyrings using `--keyring` or `--keyring-dir`.
+**Important:** When you provide custom keyrings, the default system keyrings are **ignored**. You must explicitly include them if you still want to use them.
 
 ### Commands
 
@@ -198,6 +212,7 @@ deb-for-all custom-repo --packages-xml ./packages.xml --exclude-deps recommends,
 | `--architectures` | - | Architectures (comma-separated) | `amd64` |
 | `--dest` | `-d` | Destination directory | `./downloads` |
 | `--keyring` | - | Comma-separated keyrings for GPG verification | - |
+| `--keyring-dir` | - | Comma-separated directories containing trusted GPG keyrings | - |
 | `--no-gpg-verify` | - | Disable signature verification | `false` |
 | `--verbose` | `-v` | Verbose output | `false` |
 

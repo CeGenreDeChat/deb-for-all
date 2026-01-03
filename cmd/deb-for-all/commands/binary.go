@@ -9,7 +9,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func DownloadBinaryPackage(packageName, version, baseURL string, suites, components, architectures []string, destDir, cacheDir string, silent bool, keyrings []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
+func DownloadBinaryPackage(packageName, version, baseURL string, suites, components, architectures []string, destDir, cacheDir string, silent bool, keyrings, keyringDirs []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
 	if !silent {
 		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "command.download.start",
@@ -53,7 +53,7 @@ func DownloadBinaryPackage(packageName, version, baseURL string, suites, compone
 		architectures,
 	)
 
-	repo.SetKeyringPaths(keyrings)
+	repo.SetKeyringPathsWithDirs(keyrings, keyringDirs)
 	if skipGPGVerify {
 		repo.DisableSignatureVerification()
 	}

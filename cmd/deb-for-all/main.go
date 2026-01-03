@@ -25,6 +25,7 @@ type Config struct {
 	DestDir       string
 	CacheDir      string
 	Keyrings      string
+	KeyringDirs   string
 	NoGPGVerify   bool
 	PackagesXML   string
 	ExcludeDeps   string
@@ -70,21 +71,22 @@ func localize(key string) string {
 
 func run() error {
 	keyrings := parseList(config.Keyrings)
+	keyringDirs := parseList(config.KeyringDirs)
 	suites := parseList(config.Suites)
 	components := parseList(config.Components)
 	architectures := parseList(config.Architectures)
 
 	switch strings.ToLower(config.Command) {
 	case "download":
-		return commands.DownloadBinaryPackage(config.PackageName, config.Version, config.BaseURL, suites, components, architectures, config.DestDir, config.CacheDir, config.Silent, keyrings, config.NoGPGVerify, localizer)
+		return commands.DownloadBinaryPackage(config.PackageName, config.Version, config.BaseURL, suites, components, architectures, config.DestDir, config.CacheDir, config.Silent, keyrings, keyringDirs, config.NoGPGVerify, localizer)
 	case "download-source":
-		return commands.DownloadSourcePackage(config.PackageName, config.Version, config.BaseURL, suites, components, architectures, config.DestDir, config.OrigOnly, config.Silent, localizer)
+		return commands.DownloadSourcePackage(config.PackageName, config.Version, config.BaseURL, suites, components, architectures, config.DestDir, config.OrigOnly, config.Silent, keyrings, keyringDirs, config.NoGPGVerify, localizer)
 	case "mirror":
-		return commands.CreateMirror(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, !config.MetadataOnly, config.Verbose, keyrings, config.NoGPGVerify, config.RateLimit, localizer)
+		return commands.CreateMirror(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, !config.MetadataOnly, config.Verbose, keyrings, keyringDirs, config.NoGPGVerify, config.RateLimit, localizer)
 	case "update":
-		return commands.UpdateCache(config.BaseURL, config.Suites, config.Components, config.Architectures, config.CacheDir, config.Verbose, keyrings, config.NoGPGVerify, localizer)
+		return commands.UpdateCache(config.BaseURL, config.Suites, config.Components, config.Architectures, config.CacheDir, config.Verbose, keyrings, keyringDirs, config.NoGPGVerify, localizer)
 	case "custom-repo":
-		return commands.BuildCustomRepository(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.PackagesXML, config.ExcludeDeps, keyrings, config.NoGPGVerify, config.Verbose, config.RateLimit, localizer)
+		return commands.BuildCustomRepository(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.PackagesXML, config.ExcludeDeps, keyrings, keyringDirs, config.NoGPGVerify, config.Verbose, config.RateLimit, localizer)
 	default:
 		return errors.New(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "error.unknown_command",

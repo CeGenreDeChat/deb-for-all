@@ -30,6 +30,17 @@ const (
 // Default repository sections for package search.
 var defaultSections = []string{"main", "contrib", "non-free"}
 
+// DefaultKeyringPaths contains standard system locations for GPG keyrings.
+var DefaultKeyringPaths = []string{
+	"/usr/share/keyrings/debian-archive-keyring.gpg",
+	"/usr/share/keyrings/ubuntu-archive-keyring.gpg",
+}
+
+// DefaultKeyringDirs contains directories that may contain multiple keyring files.
+var DefaultKeyringDirs = []string{
+	"/etc/apt/trusted.gpg.d",
+}
+
 // PackageInfo contains lightweight package information for search results.
 type PackageInfo struct {
 	Name         string
@@ -782,8 +793,97 @@ func (r *Repository) DisableSignatureVerification() {
 }
 
 // SetKeyringPaths sets the keyring file paths used for signature verification.
+// If paths is empty, it uses default system keyrings.
+// Paths can be files or directories; directories are expanded to include all .gpg files.
 func (r *Repository) SetKeyringPaths(paths []string) {
-	r.KeyringPaths = paths
+	r.KeyringPaths = resolveKeyringPaths(paths, nil)
+}
+
+// SetKeyringPathsWithDirs sets keyring paths from both explicit paths and directories.
+// If both are empty, default system keyrings are used.
+func (r *Repository) SetKeyringPathsWithDirs(paths, dirs []string) {
+	r.KeyringPaths = resolveKeyringPaths(paths, dirs)
+}
+
+// resolveKeyringPaths resolves keyring paths from explicit paths and directories.
+// If both are empty, it discovers default system keyrings.
+func resolveKeyringPaths(paths, dirs []string) []string {
+	var result []string
+
+	// If no explicit paths or dirs provided, use defaults
+	if len(paths) == 0 && len(dirs) == 0 {
+		result = discoverDefaultKeyrings()
+	} else {
+		// Add explicit paths that exist
+		for _, p := range paths {
+			trimmed := strings.TrimSpace(p)
+			if trimmed == "" {
+				continue
+			}
+			info, err := os.Stat(trimmed)
+			if err != nil {
+				continue // File doesn't exist, skip
+			}
+			if info.IsDir() {
+				// Expand directory to .gpg files
+				result = append(result, expandKeyringDir(trimmed)...)
+			} else {
+				result = append(result, trimmed)
+			}
+		}
+
+		// Expand explicit directories
+		for _, d := range dirs {
+			trimmed := strings.TrimSpace(d)
+			if trimmed == "" {
+				continue
+			}
+			result = append(result, expandKeyringDir(trimmed)...)
+		}
+	}
+
+	return result
+}
+
+// discoverDefaultKeyrings finds keyrings in default system locations.
+func discoverDefaultKeyrings() []string {
+	var keyrings []string
+
+	// Check default keyring files
+	for _, path := range DefaultKeyringPaths {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			keyrings = append(keyrings, path)
+		}
+	}
+
+	// Expand default keyring directories
+	for _, dir := range DefaultKeyringDirs {
+		keyrings = append(keyrings, expandKeyringDir(dir)...)
+	}
+
+	return keyrings
+}
+
+// expandKeyringDir expands a directory path to all .gpg files within it.
+func expandKeyringDir(dir string) []string {
+	var result []string
+	pattern := filepath.Join(dir, "*.gpg")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return result
+	}
+	for _, match := range matches {
+		if info, err := os.Stat(match); err == nil && !info.IsDir() {
+			result = append(result, match)
+		}
+	}
+	return result
+}
+
+// ResolveKeyringPathsExternal is the exported version of resolveKeyringPaths
+// for use by command packages that need to resolve keyrings before creating MirrorConfig.
+func ResolveKeyringPathsExternal(paths, dirs []string) []string {
+	return resolveKeyringPaths(paths, dirs)
 }
 
 // GetReleaseInfo returns the parsed Release file information.

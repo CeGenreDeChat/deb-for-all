@@ -8,7 +8,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func DownloadSourcePackage(packageName, version, baseURL string, suites, components, architectures []string, destDir string, origOnly, silent bool, localizer *i18n.Localizer) error {
+func DownloadSourcePackage(packageName, version, baseURL string, suites, components, architectures []string, destDir string, origOnly, silent bool, keyrings, keyringDirs []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
 	if !silent {
 		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "command.download.start",
@@ -50,8 +50,10 @@ func DownloadSourcePackage(packageName, version, baseURL string, suites, compone
 		architectures,
 	)
 
-	// Signature verification for sources is disabled until CLI flags mirror the binary command.
-	repo.DisableSignatureVerification()
+	repo.SetKeyringPathsWithDirs(keyrings, keyringDirs)
+	if skipGPGVerify {
+		repo.DisableSignatureVerification()
+	}
 
 	if !silent {
 		fmt.Printf("Recherche du paquet source %s", packageName)

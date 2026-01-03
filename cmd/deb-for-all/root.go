@@ -14,6 +14,7 @@ func initCommands() {
 	rootCmd.PersistentFlags().BoolVarP(&config.Verbose, "verbose", "v", false, localize("flag.verbose"))
 	rootCmd.PersistentFlags().StringVar(&config.CacheDir, "cache", "./cache", localize("flag.cache"))
 	rootCmd.PersistentFlags().StringVar(&config.Keyrings, "keyring", "", localize("flag.keyring"))
+	rootCmd.PersistentFlags().StringVar(&config.KeyringDirs, "keyring-dir", "", localize("flag.keyring_dir"))
 	rootCmd.PersistentFlags().BoolVar(&config.NoGPGVerify, "no-gpg-verify", false, localize("flag.no_gpg_verify"))
 
 	// Commande `download`

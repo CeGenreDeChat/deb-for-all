@@ -9,7 +9,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func CreateMirror(baseURL, suites, components, architectures, destDir string, downloadPkgs, verbose bool, keyrings []string, skipGPGVerify bool, rateLimit int, localizer *i18n.Localizer) error {
+func CreateMirror(baseURL, suites, components, architectures, destDir string, downloadPkgs, verbose bool, keyrings, keyringDirs []string, skipGPGVerify bool, rateLimit int, localizer *i18n.Localizer) error {
 	if verbose {
 		fmt.Println(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "command.mirror.start",
@@ -42,6 +42,9 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 		return fmt.Errorf("at least one architecture is required")
 	}
 
+	// Resolve keyring paths with defaults
+	resolvedKeyrings := debian.ResolveKeyringPathsExternal(keyrings, keyringDirs)
+
 	// Create mirror configuration
 	config := debian.MirrorConfig{
 		BaseURL:          baseURL,
@@ -50,14 +53,14 @@ func CreateMirror(baseURL, suites, components, architectures, destDir string, do
 		Architectures:    architectureList,
 		DownloadPackages: downloadPkgs,
 		Verbose:          verbose,
-		KeyringPaths:     keyrings,
+		KeyringPaths:     resolvedKeyrings,
 		SkipGPGVerify:    skipGPGVerify,
 		RateDelay:        time.Duration(rateLimit) * time.Second,
 	}
 
 	for _, suite := range suiteList {
 		repo := debian.NewRepository("mirror-validate"+suite, baseURL, "mirror validation", suite, componentList, architectureList)
-		repo.SetKeyringPaths(keyrings)
+		repo.SetKeyringPathsWithDirs(keyrings, keyringDirs)
 		if skipGPGVerify {
 			repo.DisableSignatureVerification()
 		}

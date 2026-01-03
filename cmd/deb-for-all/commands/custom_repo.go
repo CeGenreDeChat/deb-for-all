@@ -23,7 +23,7 @@ type xmlPackageEntry struct {
 
 // BuildCustomRepository builds a custom repository subset from an XML package list,
 // resolves dependencies (with optional exclusions), and downloads the resulting packages.
-func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings []string, skipGPGVerify, verbose bool, rateLimit int, localizer *i18n.Localizer) error {
+func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings, keyringDirs []string, skipGPGVerify, verbose bool, rateLimit int, localizer *i18n.Localizer) error {
 	if packagesXML == "" {
 		return fmt.Errorf("packages XML file is required")
 	}
@@ -63,7 +63,7 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 
 	for _, suite := range suiteList {
 		repo := debian.NewRepository("custom-repo"+suite, baseURL, "custom repo", suite, componentList, archList)
-		repo.SetKeyringPaths(keyrings)
+		repo.SetKeyringPathsWithDirs(keyrings, keyringDirs)
 		if skipGPGVerify {
 			repo.DisableSignatureVerification()
 		}

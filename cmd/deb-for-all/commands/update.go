@@ -8,7 +8,7 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func UpdateCache(baseURL, suites, components, architectures, cacheDir string, verbose bool, keyrings []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
+func UpdateCache(baseURL, suites, components, architectures, cacheDir string, verbose bool, keyrings, keyringDirs []string, skipGPGVerify bool, localizer *i18n.Localizer) error {
 	suiteList := splitAndTrim(suites)
 	componentList := splitAndTrim(components)
 	architectureList := splitAndTrim(architectures)
@@ -38,7 +38,7 @@ func UpdateCache(baseURL, suites, components, architectures, cacheDir string, ve
 
 	for _, suite := range suiteList {
 		repo := debian.NewRepository("cache-"+suite, baseURL, "cache update", suite, componentList, architectureList)
-		repo.SetKeyringPaths(keyrings)
+		repo.SetKeyringPathsWithDirs(keyrings, keyringDirs)
 		if skipGPGVerify {
 			repo.DisableSignatureVerification()
 		}

@@ -26,6 +26,9 @@ func TestDownloadSourcePackageOrigOnlyIntegration(t *testing.T) {
 		destDir,
 		true,
 		true,
+		nil,
+		nil,
+		false,
 		localizer,
 	); err != nil {
 		t.Fatalf("download source (orig-only) failed: %v", err)
