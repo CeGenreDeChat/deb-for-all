@@ -45,6 +45,11 @@ func NewDownloader() *Downloader {
 	}
 }
 
+// DownloadURL downloads a file from a URL to a destination path.
+func (d *Downloader) DownloadURL(url, destPath string) error {
+	return d.downloadToFile(url, destPath, nil)
+}
+
 // newHTTPClient creates a new HTTP client with the configured timeout.
 func (d *Downloader) newHTTPClient() *http.Client {
 	return &http.Client{Timeout: d.Timeout}

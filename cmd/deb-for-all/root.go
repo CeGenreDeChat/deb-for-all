@@ -99,6 +99,7 @@ func initCommands() {
 	customRepoCmd.Flags().StringVar(&config.PackagesXML, "packages-xml", "", localize("flag.packages_xml"))
 	customRepoCmd.Flags().StringVar(&config.ExcludeDeps, "exclude-deps", "", localize("flag.exclude_deps"))
 	customRepoCmd.Flags().IntVar(&config.RateLimit, "rate-limit", 0, localize("flag.rate_limit"))
+	customRepoCmd.Flags().BoolVar(&config.IncludeSources, "sources", false, localize("flag.sources"))
 	customRepoCmd.MarkFlagRequired("packages-xml")
 	rootCmd.AddCommand(customRepoCmd)
 }

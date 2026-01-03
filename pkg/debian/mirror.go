@@ -634,9 +634,30 @@ func WritePackagesMetadata(metadataRoot, suite string, packagesByComponent map[s
 	return nil
 }
 
+// WriteSourcesMetadata writes compressed Sources files under dists for a suite.
+func WriteSourcesMetadata(metadataRoot, suite string, sourcesByComponent map[string][]SourcePackage) error {
+	for component, srcPkgs := range sourcesByComponent {
+		if len(srcPkgs) == 0 {
+			continue
+		}
+
+		distsDir := filepath.Join(metadataRoot, suite, component, "source")
+		if err := os.MkdirAll(distsDir, DirPermission); err != nil {
+			return fmt.Errorf("unable to create source metadata directory %s: %w", distsDir, err)
+		}
+
+		content := []byte(formatSourcesFile(srcPkgs))
+		if err := writeCompressedSources(distsDir, content); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // WriteReleaseFiles builds unsigned Release and InRelease files for a suite.
-func WriteReleaseFiles(metadataRoot, suite string, components, architectures []string) error {
-	releaseContent, err := buildReleaseContent(metadataRoot, suite, components, architectures)
+func WriteReleaseFiles(metadataRoot, suite string, components, architectures []string, includeSources bool) error {
+	releaseContent, err := buildReleaseContent(metadataRoot, suite, components, architectures, includeSources)
 	if err != nil {
 		return err
 	}
@@ -654,7 +675,7 @@ func WriteReleaseFiles(metadataRoot, suite string, components, architectures []s
 	return nil
 }
 
-func buildReleaseContent(metadataRoot, suite string, components, architectures []string) (string, error) {
+func buildReleaseContent(metadataRoot, suite string, components, architectures []string, includeSources bool) (string, error) {
 	var sb strings.Builder
 	now := time.Now().UTC()
 
@@ -667,7 +688,7 @@ func buildReleaseContent(metadataRoot, suite string, components, architectures [
 	sb.WriteString(fmt.Sprintf("Architectures: %s\n", strings.Join(architectures, " ")))
 	sb.WriteString(fmt.Sprintf("Components: %s\n", strings.Join(components, " ")))
 
-	md5Checksums, sha256Checksums, err := collectPackagesChecksums(metadataRoot, suite, components, architectures)
+	md5Checksums, sha256Checksums, err := collectPackagesChecksums(metadataRoot, suite, components, architectures, includeSources)
 	if err != nil {
 		return "", err
 	}
@@ -678,7 +699,7 @@ func buildReleaseContent(metadataRoot, suite string, components, architectures [
 	return sb.String(), nil
 }
 
-func collectPackagesChecksums(metadataRoot, suite string, components, architectures []string) ([]FileChecksum, []FileChecksum, error) {
+func collectPackagesChecksums(metadataRoot, suite string, components, architectures []string, includeSources bool) ([]FileChecksum, []FileChecksum, error) {
 	md5Entries := make([]FileChecksum, 0)
 	sha256Entries := make([]FileChecksum, 0)
 
@@ -686,6 +707,31 @@ func collectPackagesChecksums(metadataRoot, suite string, components, architectu
 		for _, arch := range architectures {
 			for _, filename := range []string{"Packages.gz", "Packages.xz"} {
 				relPath := filepath.Join(component, fmt.Sprintf("binary-%s", arch), filename)
+				absPath := filepath.Join(metadataRoot, suite, relPath)
+				info, err := os.Stat(absPath)
+				if err != nil {
+					continue
+				}
+
+				hashMD5, err := hashFile(absPath, md5.New())
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to hash %s: %w", absPath, err)
+				}
+				hashSHA256, err := hashFile(absPath, sha256.New())
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to hash %s: %w", absPath, err)
+				}
+
+				relUnix := filepath.ToSlash(relPath)
+				md5Entries = append(md5Entries, FileChecksum{Hash: hashMD5, Size: info.Size(), Filename: relUnix})
+				sha256Entries = append(sha256Entries, FileChecksum{Hash: hashSHA256, Size: info.Size(), Filename: relUnix})
+			}
+		}
+
+		// Include Sources files if requested
+		if includeSources {
+			for _, filename := range []string{"Sources.gz", "Sources.xz"} {
+				relPath := filepath.Join(component, "source", filename)
 				absPath := filepath.Join(metadataRoot, suite, relPath)
 				info, err := os.Stat(absPath)
 				if err != nil {
@@ -735,6 +781,56 @@ func writeCompressedPackages(dir string, content []byte) error {
 	}
 
 	return nil
+}
+
+func writeCompressedSources(dir string, content []byte) error {
+	gzipPath := filepath.Join(dir, "Sources.gz")
+	if err := writeGzipFile(gzipPath, content); err != nil {
+		return fmt.Errorf("unable to write %s: %w", gzipPath, err)
+	}
+
+	xzPath := filepath.Join(dir, "Sources.xz")
+	if err := writeXZFile(xzPath, content); err != nil {
+		return fmt.Errorf("unable to write %s: %w", xzPath, err)
+	}
+
+	return nil
+}
+
+func formatSourcesFile(sources []SourcePackage) string {
+	var sb strings.Builder
+
+	for _, src := range sources {
+		writeField := func(name, value string) {
+			if value != "" {
+				sb.WriteString(name)
+				sb.WriteString(": ")
+				sb.WriteString(value)
+				sb.WriteString("\n")
+			}
+		}
+
+		writeField("Package", src.Name)
+		writeField("Version", src.Version)
+		writeField("Maintainer", src.Maintainer)
+		writeField("Directory", src.Directory)
+
+		// Write checksums sections
+		if len(src.Files) > 0 {
+			sb.WriteString("Checksums-Sha256:\n")
+			for _, f := range src.Files {
+				sb.WriteString(fmt.Sprintf(" %s %d %s\n", f.SHA256Sum, f.Size, f.Name))
+			}
+			sb.WriteString("Files:\n")
+			for _, f := range src.Files {
+				sb.WriteString(fmt.Sprintf(" %s %d %s\n", f.MD5Sum, f.Size, f.Name))
+			}
+		}
+
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
 }
 
 func writeGzipFile(path string, content []byte) error {

@@ -38,6 +38,7 @@
 "flag.metadata_only" = "Télécharger uniquement les métadonnées (Release/Packages), ignorer les .deb"
 "flag.verbose" = "Affichage verbeux"
 "flag.rate_limit" = "Délai en secondes entre les requêtes HTTP pour les .deb (0 = pas de délai, force le mode séquentiel)"
+"flag.sources" = "Télécharger également les paquets sources et générer l'index Sources"
 
 # Errors
 "error.unknown_command" = "Commande inconnue: {{.Command}}"

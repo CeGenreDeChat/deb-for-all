@@ -38,6 +38,7 @@
 "flag.metadata_only" = "Download only metadata (Release/Packages), skip .deb files"
 "flag.verbose" = "Verbose output"
 "flag.rate_limit" = "Delay in seconds between HTTP requests for .deb downloads (0 = no delay, forces sequential mode)"
+"flag.sources" = "Also download source packages and generate Sources index"
 
 # Errors
 "error.unknown_command" = "Unknown command: {{.Command}}"

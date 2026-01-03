@@ -23,7 +23,7 @@ type xmlPackageEntry struct {
 
 // BuildCustomRepository builds a custom repository subset from an XML package list,
 // resolves dependencies (with optional exclusions), and downloads the resulting packages.
-func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings, keyringDirs []string, skipGPGVerify, verbose bool, rateLimit int, localizer *i18n.Localizer) error {
+func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings, keyringDirs []string, skipGPGVerify, verbose bool, rateLimit int, includeSources bool, localizer *i18n.Localizer) error {
 	if packagesXML == "" {
 		return fmt.Errorf("packages XML file is required")
 	}
@@ -69,6 +69,7 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 		}
 
 		packageMetadata := make(map[string]map[string][]debian.Package)
+		sourceMetadata := make(map[string][]debian.SourcePackage)
 		downloader := debian.NewDownloader()
 		downloader.RateDelay = time.Duration(rateLimit) * time.Second
 
@@ -139,13 +140,32 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 				pkg.Filename = filepath.ToSlash(relPath)
 				packageMetadata[component][arch] = append(packageMetadata[component][arch], pkg)
 			}
+
+			// Download source packages if requested
+			if includeSources {
+				resolvedSlice := make([]debian.Package, 0, len(resolved))
+				for _, pkg := range resolved {
+					resolvedSlice = append(resolvedSlice, pkg)
+				}
+				srcPkgs, err := downloadSourcePackages(repo, resolvedSlice, destDir, component, downloader, verbose, suite)
+				if err != nil {
+					return fmt.Errorf("failed to download source packages for %s/%s: %w", suite, component, err)
+				}
+				sourceMetadata[component] = append(sourceMetadata[component], srcPkgs...)
+			}
 		}
 
 		if err := debian.WritePackagesMetadata(metadataRoot, suite, packageMetadata); err != nil {
 			return err
 		}
 
-		if err := debian.WriteReleaseFiles(metadataRoot, suite, componentList, archList); err != nil {
+		if includeSources && len(sourceMetadata) > 0 {
+			if err := debian.WriteSourcesMetadata(metadataRoot, suite, sourceMetadata); err != nil {
+				return err
+			}
+		}
+
+		if err := debian.WriteReleaseFiles(metadataRoot, suite, componentList, archList, includeSources && len(sourceMetadata) > 0); err != nil {
 			return fmt.Errorf("failed to write Release files for suite %s: %w", suite, err)
 		}
 	}
@@ -284,4 +304,98 @@ func localizeMessage(localizer *i18n.Localizer, messageID, fallback string, data
 	}
 
 	return fallback
+}
+
+// downloadSourcePackages downloads source packages corresponding to the resolved binary packages.
+func downloadSourcePackages(repo *debian.Repository, resolved []debian.Package, destDir, component string, downloader *debian.Downloader, verbose bool, suite string) ([]debian.SourcePackage, error) {
+	// Get unique source package names from binary packages
+	sourceNames := make(map[string]struct{})
+	for _, pkg := range resolved {
+		srcName := pkg.Source
+		if srcName == "" {
+			srcName = pkg.Package
+		}
+		// Strip version info if present (e.g., "foo (>= 1.0)" -> "foo")
+		if idx := strings.Index(srcName, " "); idx != -1 {
+			srcName = srcName[:idx]
+		}
+		sourceNames[srcName] = struct{}{}
+	}
+
+	// Fetch source packages metadata
+	if _, err := repo.FetchSources(); err != nil {
+		return nil, fmt.Errorf("failed to fetch source packages: %w", err)
+	}
+	sourcePkgs := repo.GetAllSourceMetadata()
+
+	var result []debian.SourcePackage
+	for srcName := range sourceNames {
+		srcPkg, found := findSourcePackage(sourcePkgs, srcName)
+		if !found {
+			if verbose {
+				fmt.Printf("Suite %s component %s: source package %s not found, skipping\n", suite, component, srcName)
+			}
+			continue
+		}
+
+		if verbose {
+			fmt.Printf("Suite %s component %s: downloading source %s\n", suite, component, srcName)
+		}
+
+		// Download all files for this source package
+		updatedFiles := make([]debian.SourceFile, 0, len(srcPkg.Files))
+		for _, file := range srcPkg.Files {
+			relPath := filepath.ToSlash(filepath.Join("pool", component, poolPrefix(srcName), srcName, file.Name))
+
+			targetPath := filepath.Join(destDir, filepath.FromSlash(relPath))
+			targetDir := filepath.Dir(targetPath)
+
+			if err := os.MkdirAll(targetDir, debian.DirPermission); err != nil {
+				return nil, fmt.Errorf("unable to create pool directory %s: %w", targetDir, err)
+			}
+
+			// Check if file already exists with correct checksum
+			if info, statErr := os.Stat(targetPath); statErr == nil && info.Size() == file.Size {
+				if verbose {
+					fmt.Printf("Suite %s component %s: skipping source file %s (already exists)\n", suite, component, file.Name)
+				}
+				updatedFiles = append(updatedFiles, file)
+				continue
+			}
+
+			downloadURL := file.URL
+			if downloadURL == "" {
+				downloadURL = fmt.Sprintf("%s/%s", repo.URL, relPath)
+			}
+			if err := downloader.DownloadURL(downloadURL, targetPath); err != nil {
+				return nil, fmt.Errorf("failed to download source file %s: %w", file.Name, err)
+			}
+
+			updatedFiles = append(updatedFiles, file)
+		}
+
+		srcPkg.Files = updatedFiles
+		srcPkg.Directory = filepath.ToSlash(filepath.Join("pool", component, poolPrefix(srcName), srcName))
+		result = append(result, srcPkg)
+	}
+
+	return result, nil
+}
+
+// findSourcePackage finds a source package by name in the list.
+func findSourcePackage(packages []debian.SourcePackage, name string) (debian.SourcePackage, bool) {
+	for _, pkg := range packages {
+		if pkg.Name == name {
+			return pkg, true
+		}
+	}
+	return debian.SourcePackage{}, false
+}
+
+// poolPrefix returns the pool prefix for a package name (lib* uses 4-char, others 1-char).
+func poolPrefix(name string) string {
+	if strings.HasPrefix(name, "lib") && len(name) > 3 {
+		return name[:4]
+	}
+	return name[:1]
 }

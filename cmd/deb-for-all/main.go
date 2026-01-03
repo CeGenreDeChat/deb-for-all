@@ -19,25 +19,26 @@ var localesFS embed.FS
 
 // Config globale pour stocker les arguments
 type Config struct {
-	Command       string
-	PackageName   string
-	Version       string
-	DestDir       string
-	CacheDir      string
-	Keyrings      string
-	KeyringDirs   string
-	NoGPGVerify   bool
-	PackagesXML   string
-	ExcludeDeps   string
-	OrigOnly      bool
-	Silent        bool
-	BaseURL       string
-	Suites        string
-	Components    string
-	Architectures string
-	MetadataOnly  bool
-	Verbose       bool
-	RateLimit     int
+	Command        string
+	PackageName    string
+	Version        string
+	DestDir        string
+	CacheDir       string
+	Keyrings       string
+	KeyringDirs    string
+	NoGPGVerify    bool
+	PackagesXML    string
+	ExcludeDeps    string
+	OrigOnly       bool
+	Silent         bool
+	BaseURL        string
+	Suites         string
+	Components     string
+	Architectures  string
+	MetadataOnly   bool
+	Verbose        bool
+	RateLimit      int
+	IncludeSources bool
 }
 
 var (
@@ -86,7 +87,7 @@ func run() error {
 	case "update":
 		return commands.UpdateCache(config.BaseURL, config.Suites, config.Components, config.Architectures, config.CacheDir, config.Verbose, keyrings, keyringDirs, config.NoGPGVerify, localizer)
 	case "custom-repo":
-		return commands.BuildCustomRepository(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.PackagesXML, config.ExcludeDeps, keyrings, keyringDirs, config.NoGPGVerify, config.Verbose, config.RateLimit, localizer)
+		return commands.BuildCustomRepository(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.PackagesXML, config.ExcludeDeps, keyrings, keyringDirs, config.NoGPGVerify, config.Verbose, config.RateLimit, config.IncludeSources, localizer)
 	default:
 		return errors.New(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "error.unknown_command",
