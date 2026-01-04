@@ -39,6 +39,8 @@
 "flag.verbose" = "Verbose output"
 "flag.rate_limit" = "Delay in seconds between HTTP requests for .deb downloads (0 = no delay, forces sequential mode)"
 "flag.sources" = "Also download source packages and generate Sources index"
+"flag.gpg_key" = "Path to armored GPG private key file for signing Release files (optional)"
+"flag.gpg_passphrase" = "Passphrase for the GPG private key (optional, can be empty)"
 
 # Errors
 "error.unknown_command" = "Unknown command: {{.Command}}"

@@ -23,7 +23,8 @@ type xmlPackageEntry struct {
 
 // BuildCustomRepository builds a custom repository subset from an XML package list,
 // resolves dependencies (with optional exclusions), and downloads the resulting packages.
-func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings, keyringDirs []string, skipGPGVerify, verbose bool, rateLimit int, includeSources bool, localizer *i18n.Localizer) error {
+// If gpgKeyPath is provided, the Release files will be signed with the GPG key.
+func BuildCustomRepository(baseURL, suites, components, architectures, destDir, packagesXML, excludeDeps string, keyrings, keyringDirs []string, skipGPGVerify, verbose bool, rateLimit int, includeSources bool, gpgKeyPath, gpgPassphrase string, localizer *i18n.Localizer) error {
 	if packagesXML == "" {
 		return fmt.Errorf("packages XML file is required")
 	}
@@ -165,7 +166,21 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 			}
 		}
 
-		if err := debian.WriteReleaseFiles(metadataRoot, suite, componentList, archList, includeSources && len(sourceMetadata) > 0); err != nil {
+		// Build signing config if GPG key is provided
+		var signingConfig *debian.ReleaseSigningConfig
+		if gpgKeyPath != "" {
+			signingConfig = &debian.ReleaseSigningConfig{
+				PrivateKeyPath: gpgKeyPath,
+				Passphrase:     gpgPassphrase,
+			}
+			if verbose {
+				fmt.Printf("Suite %s: signing Release files with GPG key %s\n", suite, gpgKeyPath)
+			}
+		} else if verbose {
+			fmt.Printf("Suite %s: no GPG key provided, Release files will be unsigned\n", suite)
+		}
+
+		if err := debian.WriteSignedReleaseFiles(metadataRoot, suite, componentList, archList, includeSources && len(sourceMetadata) > 0, signingConfig); err != nil {
 			return fmt.Errorf("failed to write Release files for suite %s: %w", suite, err)
 		}
 	}

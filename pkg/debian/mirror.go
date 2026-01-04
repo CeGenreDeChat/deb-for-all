@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ProtonMail/gopenpgp/v3/crypto"
 	"github.com/ulikunitz/xz"
 )
 
@@ -655,8 +656,24 @@ func WriteSourcesMetadata(metadataRoot, suite string, sourcesByComponent map[str
 	return nil
 }
 
+// ReleaseSigningConfig holds GPG signing configuration for Release files.
+type ReleaseSigningConfig struct {
+	PrivateKeyPath string // Path to the armored private key file
+	Passphrase     string // Passphrase for the private key (can be empty)
+}
+
 // WriteReleaseFiles builds unsigned Release and InRelease files for a suite.
+// For backward compatibility, use WriteSignedReleaseFiles to sign the files.
 func WriteReleaseFiles(metadataRoot, suite string, components, architectures []string, includeSources bool) error {
+	return WriteSignedReleaseFiles(metadataRoot, suite, components, architectures, includeSources, nil)
+}
+
+// WriteSignedReleaseFiles builds Release and InRelease files for a suite.
+// If signingConfig is provided with a valid private key, the files will be signed:
+// - Release.gpg: detached armored signature
+// - InRelease: cleartext signed Release
+// If signingConfig is nil or the key path is empty, files are written unsigned.
+func WriteSignedReleaseFiles(metadataRoot, suite string, components, architectures []string, includeSources bool, signingConfig *ReleaseSigningConfig) error {
 	releaseContent, err := buildReleaseContent(metadataRoot, suite, components, architectures, includeSources)
 	if err != nil {
 		return err
@@ -667,9 +684,81 @@ func WriteReleaseFiles(metadataRoot, suite string, components, architectures []s
 		return fmt.Errorf("unable to write Release file: %w", err)
 	}
 
+	// Sign Release file if signing config is provided
+	if signingConfig != nil && signingConfig.PrivateKeyPath != "" {
+		if err := signReleaseFiles(metadataRoot, suite, releaseContent, signingConfig); err != nil {
+			return fmt.Errorf("failed to sign Release files: %w", err)
+		}
+	} else {
+		// Write unsigned InRelease as a copy of Release
+		inReleasePath := filepath.Join(metadataRoot, suite, "InRelease")
+		if err := os.WriteFile(inReleasePath, []byte(releaseContent), FilePermission); err != nil {
+			return fmt.Errorf("unable to write InRelease file: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// signReleaseFiles creates Release.gpg (detached signature) and InRelease (clearsigned).
+func signReleaseFiles(metadataRoot, suite, releaseContent string, config *ReleaseSigningConfig) error {
+	keyData, err := os.ReadFile(config.PrivateKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read private key file: %w", err)
+	}
+
+	// Parse the private key from armored format
+	privateKey, err := crypto.NewKeyFromArmored(string(keyData))
+	if err != nil {
+		return fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	// Unlock the key if it's encrypted and a passphrase is provided
+	locked, err := privateKey.IsLocked()
+	if err != nil {
+		return fmt.Errorf("failed to check if key is locked: %w", err)
+	}
+	if locked {
+		unlockedKey, err := privateKey.Unlock([]byte(config.Passphrase))
+		if err != nil {
+			return fmt.Errorf("failed to unlock private key: %w", err)
+		}
+		privateKey = unlockedKey
+	}
+	defer privateKey.ClearPrivateParams()
+
+	pgp := crypto.PGP()
+
+	// Create detached signature for Release.gpg
+	signer, err := pgp.Sign().SigningKey(privateKey).Detached().New()
+	if err != nil {
+		return fmt.Errorf("failed to create detached signer: %w", err)
+	}
+
+	detachedSig, err := signer.Sign([]byte(releaseContent), crypto.Armor)
+	if err != nil {
+		return fmt.Errorf("failed to create detached signature: %w", err)
+	}
+
+	releaseGPGPath := filepath.Join(metadataRoot, suite, "Release.gpg")
+	if err := os.WriteFile(releaseGPGPath, detachedSig, FilePermission); err != nil {
+		return fmt.Errorf("unable to write Release.gpg: %w", err)
+	}
+
+	// Create cleartext signed InRelease
+	cleartextSigner, err := pgp.Sign().SigningKey(privateKey).New()
+	if err != nil {
+		return fmt.Errorf("failed to create cleartext signer: %w", err)
+	}
+
+	clearsignedMsg, err := cleartextSigner.SignCleartext([]byte(releaseContent))
+	if err != nil {
+		return fmt.Errorf("failed to create cleartext signature: %w", err)
+	}
+
 	inReleasePath := filepath.Join(metadataRoot, suite, "InRelease")
-	if err := os.WriteFile(inReleasePath, []byte(releaseContent), FilePermission); err != nil {
-		return fmt.Errorf("unable to write InRelease file: %w", err)
+	if err := os.WriteFile(inReleasePath, clearsignedMsg, FilePermission); err != nil {
+		return fmt.Errorf("unable to write InRelease: %w", err)
 	}
 
 	return nil
@@ -678,6 +767,8 @@ func WriteReleaseFiles(metadataRoot, suite string, components, architectures []s
 func buildReleaseContent(metadataRoot, suite string, components, architectures []string, includeSources bool) (string, error) {
 	var sb strings.Builder
 	now := time.Now().UTC()
+	// Valid-Until: 7 days from now
+	validUntil := now.Add(7 * 24 * time.Hour)
 
 	sb.WriteString("Origin: deb-for-all custom\n")
 	sb.WriteString("Label: deb-for-all custom\n")
@@ -685,8 +776,11 @@ func buildReleaseContent(metadataRoot, suite string, components, architectures [
 	sb.WriteString("Version: 1.0\n")
 	sb.WriteString(fmt.Sprintf("Codename: %s\n", suite))
 	sb.WriteString(fmt.Sprintf("Date: %s\n", now.Format(time.RFC1123Z)))
+	sb.WriteString(fmt.Sprintf("Valid-Until: %s\n", validUntil.Format(time.RFC1123Z)))
 	sb.WriteString(fmt.Sprintf("Architectures: %s\n", strings.Join(architectures, " ")))
 	sb.WriteString(fmt.Sprintf("Components: %s\n", strings.Join(components, " ")))
+	sb.WriteString("Acquire-By-Hash: no\n")
+	sb.WriteString("Description: Custom Debian repository built with deb-for-all\n")
 
 	md5Checksums, sha256Checksums, err := collectPackagesChecksums(metadataRoot, suite, components, architectures, includeSources)
 	if err != nil {

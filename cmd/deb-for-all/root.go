@@ -100,6 +100,8 @@ func initCommands() {
 	customRepoCmd.Flags().StringVar(&config.ExcludeDeps, "exclude-deps", "", localize("flag.exclude_deps"))
 	customRepoCmd.Flags().IntVar(&config.RateLimit, "rate-limit", 0, localize("flag.rate_limit"))
 	customRepoCmd.Flags().BoolVar(&config.IncludeSources, "sources", false, localize("flag.sources"))
+	customRepoCmd.Flags().StringVar(&config.GPGKeyPath, "gpg-key", "", localize("flag.gpg_key"))
+	customRepoCmd.Flags().StringVar(&config.GPGPassphrase, "gpg-passphrase", "", localize("flag.gpg_passphrase"))
 	customRepoCmd.MarkFlagRequired("packages-xml")
 	rootCmd.AddCommand(customRepoCmd)
 }

@@ -39,6 +39,8 @@ type Config struct {
 	Verbose        bool
 	RateLimit      int
 	IncludeSources bool
+	GPGKeyPath     string
+	GPGPassphrase  string
 }
 
 var (
@@ -87,7 +89,7 @@ func run() error {
 	case "update":
 		return commands.UpdateCache(config.BaseURL, config.Suites, config.Components, config.Architectures, config.CacheDir, config.Verbose, keyrings, keyringDirs, config.NoGPGVerify, localizer)
 	case "custom-repo":
-		return commands.BuildCustomRepository(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.PackagesXML, config.ExcludeDeps, keyrings, keyringDirs, config.NoGPGVerify, config.Verbose, config.RateLimit, config.IncludeSources, localizer)
+		return commands.BuildCustomRepository(config.BaseURL, config.Suites, config.Components, config.Architectures, config.DestDir, config.PackagesXML, config.ExcludeDeps, keyrings, keyringDirs, config.NoGPGVerify, config.Verbose, config.RateLimit, config.IncludeSources, config.GPGKeyPath, config.GPGPassphrase, localizer)
 	default:
 		return errors.New(localizer.MustLocalize(&i18n.LocalizeConfig{
 			MessageID: "error.unknown_command",
