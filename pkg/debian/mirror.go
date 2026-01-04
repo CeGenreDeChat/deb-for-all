@@ -799,7 +799,7 @@ func collectPackagesChecksums(metadataRoot, suite string, components, architectu
 
 	for _, component := range components {
 		for _, arch := range architectures {
-			for _, filename := range []string{"Packages.gz", "Packages.xz"} {
+			for _, filename := range []string{"Packages", "Packages.gz", "Packages.xz"} {
 				relPath := filepath.Join(component, fmt.Sprintf("binary-%s", arch), filename)
 				absPath := filepath.Join(metadataRoot, suite, relPath)
 				info, err := os.Stat(absPath)
@@ -824,7 +824,7 @@ func collectPackagesChecksums(metadataRoot, suite string, components, architectu
 
 		// Include Sources files if requested
 		if includeSources {
-			for _, filename := range []string{"Sources.gz", "Sources.xz"} {
+			for _, filename := range []string{"Sources", "Sources.gz", "Sources.xz"} {
 				relPath := filepath.Join(component, "source", filename)
 				absPath := filepath.Join(metadataRoot, suite, relPath)
 				info, err := os.Stat(absPath)
@@ -864,6 +864,12 @@ func writeReleaseChecksumSection(sb *strings.Builder, section string, entries []
 }
 
 func writeCompressedPackages(dir string, content []byte) error {
+	// Write uncompressed Packages file
+	packagesPath := filepath.Join(dir, "Packages")
+	if err := os.WriteFile(packagesPath, content, FilePermission); err != nil {
+		return fmt.Errorf("unable to write %s: %w", packagesPath, err)
+	}
+
 	gzipPath := filepath.Join(dir, "Packages.gz")
 	if err := writeGzipFile(gzipPath, content); err != nil {
 		return fmt.Errorf("unable to write %s: %w", gzipPath, err)
@@ -878,6 +884,12 @@ func writeCompressedPackages(dir string, content []byte) error {
 }
 
 func writeCompressedSources(dir string, content []byte) error {
+	// Write uncompressed Sources file
+	sourcesPath := filepath.Join(dir, "Sources")
+	if err := os.WriteFile(sourcesPath, content, FilePermission); err != nil {
+		return fmt.Errorf("unable to write %s: %w", sourcesPath, err)
+	}
+
 	gzipPath := filepath.Join(dir, "Sources.gz")
 	if err := writeGzipFile(gzipPath, content); err != nil {
 		return fmt.Errorf("unable to write %s: %w", gzipPath, err)
