@@ -224,6 +224,9 @@ func (r *Repository) FetchPackages() ([]string, error) {
 		}
 	}
 
+	// Reset metadata to avoid accumulation across multiple calls
+	r.PackageMetadata = r.PackageMetadata[:0]
+
 	allPackages := make(map[string]bool)
 	var lastErr error
 	foundAtLeastOne := false
@@ -1078,7 +1081,8 @@ func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
 		return nil, err
 	}
 
-	r.PackageMetadata = metadata
+	// Accumulate metadata instead of replacing it
+	r.PackageMetadata = append(r.PackageMetadata, metadata...)
 	return packagedNames, nil
 }
 

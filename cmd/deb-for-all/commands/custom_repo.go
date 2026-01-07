@@ -74,85 +74,110 @@ func BuildCustomRepository(baseURL, suites, components, architectures, destDir, 
 		downloader := debian.NewDownloader()
 		downloader.RateDelay = time.Duration(rateLimit) * time.Second
 
-		for _, component := range componentList {
-			repo.SetSections([]string{component})
+		// Validate all components and architectures first
+		if err := validateComponentsAndArchitectures(repo, suite, componentList, archList, localizer); err != nil {
+			return err
+		}
 
-			if err := validateComponentsAndArchitectures(repo, suite, []string{component}, archList, localizer); err != nil {
-				return err
+		// Fetch metadata for ALL components before resolving dependencies
+		if verbose {
+			fmt.Printf("Suite %s: fetching metadata for all components (%s)...\n", suite, strings.Join(componentList, ", "))
+		}
+
+		if _, err := repo.FetchPackages(); err != nil {
+			return fmt.Errorf("failed to fetch packages for %s: %w", suite, err)
+		}
+
+		// Resolve dependencies across ALL components
+		resolved, err := repo.ResolveDependencies(packageSpecs, excludeSet)
+		if err != nil {
+			return fmt.Errorf("failed to resolve dependencies for %s: %w", suite, err)
+		}
+
+		if verbose {
+			fmt.Printf("Suite %s: %d packages to download across all components\n", suite, len(resolved))
+		}
+
+		// Download packages and organize by their original component
+		for _, pkg := range resolved {
+			arch := pkg.Architecture
+			if arch == "" {
+				arch = archList[0]
 			}
 
-			if verbose {
-				fmt.Printf("Suite %s component %s: fetching metadata...\n", suite, component)
+			// Extract component from Filename (e.g., pool/non-free/s/snmp/... -> non-free)
+			component := extractComponentFromPath(pkg.Filename, componentList)
+			if component == "" {
+				// Fallback: use first component if extraction fails
+				component = componentList[0]
+				if verbose {
+					fmt.Printf("Warning: could not determine component for %s, using %s\n", pkg.Name, component)
+				}
 			}
 
-			if _, err := repo.FetchPackages(); err != nil {
-				return fmt.Errorf("failed to fetch packages for %s/%s: %w", suite, component, err)
+			if _, ok := packageMetadata[component]; !ok {
+				packageMetadata[component] = make(map[string][]debian.Package)
 			}
 
-			resolved, err := repo.ResolveDependencies(packageSpecs, excludeSet)
+			relPath := pkg.Filename
+			if relPath == "" {
+				filename := filepath.Base(packageFilename(&pkg))
+				relPath = filepath.ToSlash(filepath.Join("pool", component, filename))
+			}
+
+			targetPath := filepath.Join(destDir, filepath.FromSlash(relPath))
+			targetDir := filepath.Dir(targetPath)
+
+			skip, err := downloader.ShouldSkipDownload(&pkg, targetPath)
 			if err != nil {
-				return fmt.Errorf("failed to resolve dependencies for %s/%s: %w", suite, component, err)
+				return fmt.Errorf("failed to check existing file for %s: %w", pkg.Name, err)
 			}
-
-			if verbose {
-				fmt.Printf("Suite %s component %s: %d packages to download\n", suite, component, len(resolved))
-			}
-
-			for _, pkg := range resolved {
-				arch := pkg.Architecture
-				if arch == "" {
-					arch = archList[0]
+			if skip {
+				if verbose {
+					fmt.Printf("Suite %s: skipping %s from %s (already downloaded, checksum verified)\n", suite, pkg.Name, component)
 				}
-
-				if _, ok := packageMetadata[component]; !ok {
-					packageMetadata[component] = make(map[string][]debian.Package)
-				}
-
-				relPath := pkg.Filename
-				if relPath == "" {
-					filename := filepath.Base(packageFilename(&pkg))
-					relPath = filepath.ToSlash(filepath.Join("pool", component, filename))
-				}
-
-				targetPath := filepath.Join(destDir, filepath.FromSlash(relPath))
-				targetDir := filepath.Dir(targetPath)
-
-				skip, err := downloader.ShouldSkipDownload(&pkg, targetPath)
-				if err != nil {
-					return fmt.Errorf("failed to check existing file for %s: %w", pkg.Name, err)
-				}
-				if skip {
-					if verbose {
-						fmt.Printf("Suite %s component %s: skipping %s (already downloaded, checksum verified)\n", suite, component, pkg.Name)
-					}
-					pkg.Filename = filepath.ToSlash(relPath)
-					packageMetadata[component][arch] = append(packageMetadata[component][arch], pkg)
-					continue
-				}
-
-				if err := os.MkdirAll(targetDir, debian.DirPermission); err != nil {
-					return fmt.Errorf("unable to create pool directory %s: %w", targetDir, err)
-				}
-
-				if err := downloader.DownloadWithProgress(&pkg, targetPath, nil); err != nil {
-					return fmt.Errorf("failed to download %s: %w", pkg.Name, err)
-				}
-
 				pkg.Filename = filepath.ToSlash(relPath)
 				packageMetadata[component][arch] = append(packageMetadata[component][arch], pkg)
+				continue
 			}
 
-			// Download source packages if requested
-			if includeSources {
-				resolvedSlice := make([]debian.Package, 0, len(resolved))
-				for _, pkg := range resolved {
-					resolvedSlice = append(resolvedSlice, pkg)
+			if err := os.MkdirAll(targetDir, debian.DirPermission); err != nil {
+				return fmt.Errorf("unable to create pool directory %s: %w", targetDir, err)
+			}
+
+			if err := downloader.DownloadWithProgress(&pkg, targetPath, nil); err != nil {
+				return fmt.Errorf("failed to download %s: %w", pkg.Name, err)
+			}
+
+			pkg.Filename = filepath.ToSlash(relPath)
+			packageMetadata[component][arch] = append(packageMetadata[component][arch], pkg)
+		}
+
+		// Download source packages if requested
+		if includeSources {
+			resolvedSlice := make([]debian.Package, 0, len(resolved))
+			for _, pkg := range resolved {
+				resolvedSlice = append(resolvedSlice, pkg)
+			}
+
+			// Group source packages by component
+			for _, component := range componentList {
+				// Filter packages for this component
+				var componentPkgs []debian.Package
+				for _, pkg := range resolvedSlice {
+					pkgComponent := extractComponentFromPath(pkg.Filename, componentList)
+					if pkgComponent == component || pkgComponent == "" {
+						componentPkgs = append(componentPkgs, pkg)
+					}
 				}
-				srcPkgs, err := downloadSourcePackages(repo, resolvedSlice, destDir, component, downloader, verbose, suite)
-				if err != nil {
-					return fmt.Errorf("failed to download source packages for %s/%s: %w", suite, component, err)
+
+				if len(componentPkgs) > 0 {
+					srcPkgs, err := downloadSourcePackages(repo, componentPkgs, destDir, component, downloader, verbose, suite)
+					if err != nil {
+						return fmt.Errorf("failed to download source packages for %s/%s: %w", suite, component, err)
+					}
+					sourceMetadata[component] = append(sourceMetadata[component], srcPkgs...)
 				}
-				sourceMetadata[component] = append(sourceMetadata[component], srcPkgs...)
 			}
 		}
 
@@ -413,4 +438,35 @@ func poolPrefix(name string) string {
 		return name[:4]
 	}
 	return name[:1]
+}
+
+// extractComponentFromPath extracts the component from a pool path.
+// Example: "pool/non-free/s/snmp/..." -> "non-free"
+// Returns empty string if component cannot be determined.
+func extractComponentFromPath(path string, validComponents []string) string {
+	if path == "" {
+		return ""
+	}
+
+	// Normalize path separators
+	path = filepath.ToSlash(path)
+
+	// Split path and look for pool/ prefix
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[0] != "pool" {
+		return ""
+	}
+
+	// Component is typically the second part (after "pool/")
+	component := parts[1]
+
+	// Validate against the list of valid components
+	for _, valid := range validComponents {
+		if component == valid {
+			return component
+		}
+	}
+
+	// If not found in valid list, still return it (could be new component)
+	return component
 }
