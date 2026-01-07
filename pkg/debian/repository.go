@@ -28,9 +28,9 @@ const (
 	packagesInitialAlloc = 64 * 1024   // Initial allocation for scanner buffer
 )
 
-// Default repository sections for package search.
+// Default repository components for package search.
 // Note: non-free-firmware was introduced in Debian 12 (Bookworm).
-var defaultSections = []string{"main", "contrib", "non-free", "non-free-firmware"}
+var defaultComponents = []string{"main", "contrib", "non-free", "non-free-firmware"}
 
 // ErrGPGNotFound is returned when gpgv executable cannot be found on Windows.
 var ErrGPGNotFound = fmt.Errorf("gpgv executable not found: please install Gpg4win from https://www.gpg4win.org/ or add gpgv.exe to your PATH")
@@ -179,8 +179,8 @@ type Repository struct {
 	Name            string
 	URL             string
 	Description     string
-	Distribution    string
-	Sections        []string
+	Suite           string
+	Components      []string
 	Architectures   []string
 	Packages        []string
 	PackageMetadata []Package
@@ -199,13 +199,13 @@ type PackageSpec struct {
 }
 
 // NewRepository creates a new Repository instance with the specified configuration.
-func NewRepository(name, url, description, distribution string, sections, architectures []string) *Repository {
+func NewRepository(name, url, description, suite string, components, architectures []string) *Repository {
 	return &Repository{
 		Name:            name,
 		URL:             url,
 		Description:     description,
-		Distribution:    distribution,
-		Sections:        sections,
+		Suite:           suite,
+		Components:      components,
 		Architectures:   architectures,
 		VerifyRelease:   true,
 		VerifySignature: true,
@@ -232,12 +232,12 @@ func (r *Repository) FetchPackages() ([]string, error) {
 	var lastErr error
 	foundAtLeastOne := false
 
-	for _, section := range r.Sections {
+	for _, component := range r.Components {
 		for _, arch := range r.Architectures {
-			packages, err := r.fetchPackagesForSectionArch(section, arch)
+			packages, err := r.fetchPackagesForComponentArch(component, arch)
 			if err != nil {
 				if r.WarningHandler != nil {
-					r.WarningHandler(fmt.Sprintf("Warning: unable to fetch packages for section '%s', architecture '%s': %v", section, arch, err))
+					r.WarningHandler(fmt.Sprintf("Warning: unable to fetch packages for component '%s', architecture '%s': %v", component, arch, err))
 				}
 				lastErr = err
 				continue
@@ -251,7 +251,7 @@ func (r *Repository) FetchPackages() ([]string, error) {
 	}
 
 	if !foundAtLeastOne {
-		return nil, fmt.Errorf("unable to fetch packages from distribution %s: %w", r.Distribution, lastErr)
+		return nil, fmt.Errorf("unable to fetch packages from suite %s: %w", r.Suite, lastErr)
 	}
 
 	result := make([]string, 0, len(allPackages))
@@ -263,7 +263,7 @@ func (r *Repository) FetchPackages() ([]string, error) {
 	return result, nil
 }
 
-// FetchAndCachePackages downloads Packages metadata for all configured sections and architectures
+// FetchAndCachePackages downloads Packages metadata for all configured components and architectures
 // and writes the decompressed files to the provided cache directory.
 func (r *Repository) FetchAndCachePackages(cacheDir string) error {
 	if cacheDir == "" {
@@ -283,9 +283,9 @@ func (r *Repository) FetchAndCachePackages(cacheDir string) error {
 	var lastErr error
 	foundAtLeastOne := false
 
-	for _, section := range r.Sections {
+	for _, component := range r.Components {
 		for _, arch := range r.Architectures {
-			if err := r.cachePackagesForSectionArch(cacheDir, section, arch); err != nil {
+			if err := r.cachePackagesForComponentArch(cacheDir, component, arch); err != nil {
 				lastErr = err
 				continue
 			}
@@ -294,14 +294,14 @@ func (r *Repository) FetchAndCachePackages(cacheDir string) error {
 	}
 
 	if !foundAtLeastOne {
-		return fmt.Errorf("unable to cache packages from distribution %s: %w", r.Distribution, lastErr)
+		return fmt.Errorf("unable to cache packages from suite %s: %w", r.Suite, lastErr)
 	}
 
 	return nil
 }
 
 // FetchSources fetches and parses Sources files from the repository.
-// Returns a list of source package names found across all configured sections.
+// Returns a list of source package names found across all configured components.
 func (r *Repository) FetchSources() ([]string, error) {
 	if r.VerifyRelease {
 		if err := r.FetchReleaseFile(); err != nil {
@@ -315,11 +315,11 @@ func (r *Repository) FetchSources() ([]string, error) {
 	var lastErr error
 	foundAtLeastOne := false
 
-	for _, section := range r.Sections {
-		sources, err := r.fetchSourcesForSection(section)
+	for _, component := range r.Components {
+		sources, err := r.fetchSourcesForComponent(component)
 		if err != nil {
 			if r.WarningHandler != nil {
-				r.WarningHandler(fmt.Sprintf("Warning: unable to fetch sources for section '%s': %v", section, err))
+				r.WarningHandler(fmt.Sprintf("Warning: unable to fetch sources for component '%s': %v", component, err))
 			}
 			lastErr = err
 			continue
@@ -334,7 +334,7 @@ func (r *Repository) FetchSources() ([]string, error) {
 	}
 
 	if !foundAtLeastOne {
-		return nil, fmt.Errorf("unable to fetch source packages from distribution %s: %w", r.Distribution, lastErr)
+		return nil, fmt.Errorf("unable to fetch source packages from suite %s: %w", r.Suite, lastErr)
 	}
 
 	r.SourceMetadata = metadata
@@ -348,11 +348,11 @@ func (r *Repository) FetchSources() ([]string, error) {
 	return result, nil
 }
 
-func (r *Repository) fetchSourcesForSection(section string) ([]SourcePackage, error) {
+func (r *Repository) fetchSourcesForComponent(component string) ([]SourcePackage, error) {
 	var lastErr error
 
 	for _, ext := range CompressionExtensions {
-		sourcesURL := r.buildSourcesURLWithDist(r.Distribution, section) + ext
+		sourcesURL := r.buildSourcesURL(r.Suite, component) + ext
 
 		if !r.checkURLExists(sourcesURL) {
 			lastErr = fmt.Errorf("Sources file not accessible: %s", sourcesURL)
@@ -363,9 +363,9 @@ func (r *Repository) fetchSourcesForSection(section string) ([]SourcePackage, er
 		var err error
 
 		if ext == "" {
-			sources, err = r.downloadAndParseSourcesWithVerification(sourcesURL, section)
+			sources, err = r.downloadAndParseSourcesWithVerification(sourcesURL, component)
 		} else {
-			sources, err = r.downloadAndParseCompressedSourcesWithVerification(sourcesURL, ext, section)
+			sources, err = r.downloadAndParseCompressedSourcesWithVerification(sourcesURL, ext, component)
 		}
 
 		if err != nil {
@@ -380,7 +380,7 @@ func (r *Repository) fetchSourcesForSection(section string) ([]SourcePackage, er
 }
 
 // parseSourcesFromReader parses source metadata directly from an io.Reader.
-func (r *Repository) parseSourcesFromReader(reader io.Reader, section string) ([]SourcePackage, error) {
+func (r *Repository) parseSourcesFromReader(reader io.Reader, component string) ([]SourcePackage, error) {
 	scanner := bufio.NewScanner(reader)
 	buf := make([]byte, 0, packagesInitialAlloc)
 	scanner.Buffer(buf, packagesBufferSize)
@@ -394,7 +394,7 @@ func (r *Repository) parseSourcesFromReader(reader io.Reader, section string) ([
 		if current == nil {
 			return
 		}
-		r.finalizeSourcePackage(current, files, section)
+		r.finalizeSourcePackage(current, files, component)
 		sources = append(sources, *current)
 		current = nil
 		files = make(map[string]*SourceFile)
@@ -482,11 +482,11 @@ func (r *Repository) parseSourcesFromReader(reader io.Reader, section string) ([
 }
 
 // Deprecated: use parseSourcesFromReader instead.
-func (r *Repository) parseSourcesData(data []byte, section string) ([]SourcePackage, error) {
-	return r.parseSourcesFromReader(bytes.NewReader(data), section)
+func (r *Repository) parseSourcesData(data []byte, component string) ([]SourcePackage, error) {
+	return r.parseSourcesFromReader(bytes.NewReader(data), component)
 }
 
-func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section string) ([]SourcePackage, error) {
+func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, component string) ([]SourcePackage, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving Sources file: %w", err)
@@ -494,7 +494,7 @@ func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section
 	defer resp.Body.Close()
 
 	if !r.VerifyRelease || r.ReleaseInfo == nil {
-		return r.parseSourcesFromReader(resp.Body, section)
+		return r.parseSourcesFromReader(resp.Body, component)
 	}
 
 	// For validation, buffering is acceptable for small sources files or required for full checksum
@@ -503,14 +503,14 @@ func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section
 		return nil, fmt.Errorf("error reading Sources file: %w", err)
 	}
 
-	if err = r.VerifySourcesFileChecksum(section, data); err != nil {
+	if err = r.VerifySourcesFileChecksum(component, data); err != nil {
 		return nil, fmt.Errorf("failed to verify checksum: %w", err)
 	}
 
-	return r.parseSourcesFromReader(bytes.NewReader(data), section)
+	return r.parseSourcesFromReader(bytes.NewReader(data), component)
 }
 
-func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesURL, extension, section string) ([]SourcePackage, error) {
+func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesURL, extension, component string) ([]SourcePackage, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving compressed Sources file: %w", err)
@@ -530,13 +530,13 @@ func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesUR
 		hasher := sha256.New()
 		teeReader := io.TeeReader(reader, hasher)
 
-		sources, err := r.parseSourcesFromReader(teeReader, section)
+		sources, err := r.parseSourcesFromReader(teeReader, component)
 		if err != nil {
 			return nil, err
 		}
 
 		actualHash := fmt.Sprintf("%x", hasher.Sum(nil))
-		filename := fmt.Sprintf("%s/source/Sources", section)
+		filename := fmt.Sprintf("%s/source/Sources", component)
 
 		found := false
 		for _, checksum := range r.ReleaseInfo.SHA256 {
@@ -556,7 +556,7 @@ func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesUR
 		return sources, nil
 	}
 
-	return r.parseSourcesFromReader(reader, section)
+	return r.parseSourcesFromReader(reader, component)
 }
 
 func (r *Repository) parseSourceFileEntry(line string, files map[string]*SourceFile, checksumType string) {
@@ -592,13 +592,13 @@ func (r *Repository) parseSourceFileEntry(line string, files map[string]*SourceF
 	}
 }
 
-func (r *Repository) finalizeSourcePackage(pkg *SourcePackage, files map[string]*SourceFile, section string) {
+func (r *Repository) finalizeSourcePackage(pkg *SourcePackage, files map[string]*SourceFile, component string) {
 	if pkg == nil {
 		return
 	}
 
 	if pkg.Directory == "" {
-		pkg.Directory = r.buildSourceDirectory(section, pkg.Name)
+		pkg.Directory = r.buildSourceDirectory(component, pkg.Name)
 	}
 
 	baseURL := strings.TrimSuffix(r.URL, "/")
@@ -643,24 +643,24 @@ func detectSourceFileType(filename string) string {
 	}
 }
 
-func (r *Repository) cachePackagesForSectionArch(cacheDir, section, architecture string) error {
+func (r *Repository) cachePackagesForComponentArch(cacheDir, component, architecture string) error {
 	var lastErr error
 
 	for _, ext := range CompressionExtensions {
-		packagesURL := r.buildPackagesURLWithDist(r.Distribution, section, architecture) + ext
+		packagesURL := r.buildPackagesURL(r.Suite, component, architecture) + ext
 
 		if !r.checkURLExists(packagesURL) {
 			lastErr = fmt.Errorf("Packages file not accessible: %s", packagesURL)
 			continue
 		}
 
-		data, err := r.downloadPackagesData(packagesURL, ext, section, architecture)
+		data, err := r.downloadPackagesData(packagesURL, ext, component, architecture)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
-		targetDir := filepath.Join(cacheDir, r.Distribution, section, fmt.Sprintf("binary-%s", architecture))
+		targetDir := filepath.Join(cacheDir, r.Suite, component, fmt.Sprintf("binary-%s", architecture))
 		if err := os.MkdirAll(targetDir, DirPermission); err != nil {
 			return fmt.Errorf("unable to create cache directory: %w", err)
 		}
@@ -676,7 +676,7 @@ func (r *Repository) cachePackagesForSectionArch(cacheDir, section, architecture
 	return lastErr
 }
 
-func (r *Repository) downloadPackagesData(packagesURL, extension, section, architecture string) ([]byte, error) {
+func (r *Repository) downloadPackagesData(packagesURL, extension, component, architecture string) ([]byte, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving Packages file: %w", err)
@@ -693,7 +693,7 @@ func (r *Repository) downloadPackagesData(packagesURL, extension, section, archi
 		}
 
 		if r.VerifyRelease && r.ReleaseInfo != nil {
-			if err := r.VerifyPackagesFileChecksum(section, architecture, data); err != nil {
+			if err := r.VerifyPackagesFileChecksum(component, architecture, data); err != nil {
 				return nil, fmt.Errorf("failed to verify checksum: %w", err)
 			}
 		}
@@ -717,7 +717,7 @@ func (r *Repository) downloadPackagesData(packagesURL, extension, section, archi
 	}
 
 	if r.VerifyRelease && r.ReleaseInfo != nil {
-		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
+		filename := fmt.Sprintf("%s/binary-%s/Packages", component, architecture)
 		// Try SHA256 first
 		verified := false
 		for _, checksum := range r.ReleaseInfo.SHA256 {
@@ -751,12 +751,12 @@ func (r *Repository) downloadPackagesData(packagesURL, extension, section, archi
 	return data, nil
 }
 
-// fetchPackagesForSectionArch tries to fetch Packages file for a specific section/arch combination.
-func (r *Repository) fetchPackagesForSectionArch(section, arch string) ([]string, error) {
+// fetchPackagesForComponentArch tries to fetch Packages file for a specific component/arch combination.
+func (r *Repository) fetchPackagesForComponentArch(component, arch string) ([]string, error) {
 	var lastErr error
 
 	for _, ext := range CompressionExtensions {
-		packagesURL := r.buildPackagesURLWithDist(r.Distribution, section, arch) + ext
+		packagesURL := r.buildPackagesURL(r.Suite, component, arch) + ext
 
 		if !r.checkURLExists(packagesURL) {
 			lastErr = fmt.Errorf("Packages file not accessible: %s", packagesURL)
@@ -767,9 +767,9 @@ func (r *Repository) fetchPackagesForSectionArch(section, arch string) ([]string
 		var err error
 
 		if ext == "" {
-			packages, err = r.downloadAndParsePackagesWithVerification(packagesURL, section, arch)
+			packages, err = r.downloadAndParsePackagesWithVerification(packagesURL, component, arch)
 		} else {
-			packages, err = r.downloadAndParseCompressedPackagesWithVerification(packagesURL, ext, section, arch)
+			packages, err = r.downloadAndParseCompressedPackagesWithVerification(packagesURL, ext, component, arch)
 		}
 
 		if err != nil {
@@ -814,7 +814,7 @@ func (r *Repository) SearchPackage(packageName string) ([]string, error) {
 	}
 
 	if len(exactMatches) == 0 && len(partialMatches) == 0 {
-		return nil, fmt.Errorf("no packages found for '%s' in distribution %s", packageName, r.Distribution)
+		return nil, fmt.Errorf("no packages found for '%s' in suite %s", packageName, r.Suite)
 	}
 
 	result := make([]string, 0, len(exactMatches)+len(partialMatches))
@@ -861,17 +861,17 @@ func getPoolPrefix(packageName string) string {
 	return string(packageName[0])
 }
 
-// buildPackageURL constructs the download URL for a package in the default section.
+// buildPackageURL constructs the download URL for a package in the default component.
 func (r *Repository) buildPackageURL(packageName, version, architecture string) string {
-	return r.buildPackageURLWithSection(packageName, version, architecture, "main")
+	return r.buildPackageURLWithComponent(packageName, version, architecture, "main")
 }
 
-// buildPackageURLWithSection constructs the download URL for a package in a specific section.
-func (r *Repository) buildPackageURLWithSection(packageName, version, architecture, section string) string {
+// buildPackageURLWithComponent constructs the download URL for a package in a specific component.
+func (r *Repository) buildPackageURLWithComponent(packageName, version, architecture, component string) string {
 	baseURL := strings.TrimSuffix(r.URL, "/")
 	filename := fmt.Sprintf("%s_%s_%s.deb", packageName, version, architecture)
 	prefix := getPoolPrefix(packageName)
-	return fmt.Sprintf("%s/pool/%s/%s/%s/%s", baseURL, section, prefix, packageName, filename)
+	return fmt.Sprintf("%s/pool/%s/%s/%s/%s", baseURL, component, prefix, packageName, filename)
 }
 
 // CheckPackageAvailability checks if a package exists at the expected URL.
@@ -879,31 +879,31 @@ func (r *Repository) CheckPackageAvailability(packageName, version, architecture
 	return r.checkURLExists(r.buildPackageURL(packageName, version, architecture)), nil
 }
 
-// DownloadPackageFromSources tries to download a package from multiple sections.
-func (r *Repository) DownloadPackageFromSources(packageName, version, architecture, destDir string, sections []string) error {
-	if len(sections) == 0 {
-		sections = defaultSections
+// DownloadPackageFromSources tries to download a package from multiple components.
+func (r *Repository) DownloadPackageFromSources(packageName, version, architecture, destDir string, components []string) error {
+	if len(components) == 0 {
+		components = defaultComponents
 	}
 
 	var lastErr error
-	for _, section := range sections {
-		url := r.buildPackageURLWithSection(packageName, version, architecture, section)
+	for _, component := range components {
+		url := r.buildPackageURLWithComponent(packageName, version, architecture, component)
 
 		if r.checkURLExists(url) {
 			pkg := r.buildPackageStruct(packageName, version, architecture, url)
 			return NewDownloader().DownloadToDirSilent(pkg, destDir)
 		}
 
-		lastErr = fmt.Errorf("package not found in section %s", section)
+		lastErr = fmt.Errorf("package not found in component %s", component)
 	}
 
-	return fmt.Errorf("package %s_%s_%s not found in any section: %w", packageName, version, architecture, lastErr)
+	return fmt.Errorf("package %s_%s_%s not found in any component: %w", packageName, version, architecture, lastErr)
 }
 
-// SearchPackageInSources searches for a package across all default sections.
-func (r *Repository) SearchPackageInSources(packageName, version, architecture string) (*PackageInfo, error) {
-	for _, section := range defaultSections {
-		url := r.buildPackageURLWithSection(packageName, version, architecture, section)
+// SearchPackageInComponents searches for a package across all default components.
+func (r *Repository) SearchPackageInComponents(packageName, version, architecture string) (*PackageInfo, error) {
+	for _, component := range defaultComponents {
+		url := r.buildPackageURLWithComponent(packageName, version, architecture, component)
 
 		resp, err := r.downloader().doRequestWithRetry(http.MethodHead, url, true)
 		if err != nil {
@@ -917,7 +917,7 @@ func (r *Repository) SearchPackageInSources(packageName, version, architecture s
 				Name:         packageName,
 				Version:      version,
 				Architecture: architecture,
-				Section:      section,
+				Section:      component, // "Section" refers to valid location, here it's the component
 				DownloadURL:  url,
 				Size:         size,
 			}, nil
@@ -927,16 +927,16 @@ func (r *Repository) SearchPackageInSources(packageName, version, architecture s
 	return nil, fmt.Errorf("package %s_%s_%s not found", packageName, version, architecture)
 }
 
-// buildPackagesURLWithDist constructs the URL for a Packages file.
-func (r *Repository) buildPackagesURLWithDist(distribution, section, architecture string) string {
+// buildPackagesURL constructs the URL for a Packages file.
+func (r *Repository) buildPackagesURL(suite, component, architecture string) string {
 	baseURL := strings.TrimSuffix(r.URL, "/")
-	return fmt.Sprintf("%s/dists/%s/%s/binary-%s/Packages", baseURL, distribution, section, architecture)
+	return fmt.Sprintf("%s/dists/%s/%s/binary-%s/Packages", baseURL, suite, component, architecture)
 }
 
-// buildSourcesURLWithDist constructs the URL for a Sources file.
-func (r *Repository) buildSourcesURLWithDist(distribution, section string) string {
+// buildSourcesURL constructs the URL for a Sources file.
+func (r *Repository) buildSourcesURL(suite, component string) string {
 	baseURL := strings.TrimSuffix(r.URL, "/")
-	return fmt.Sprintf("%s/dists/%s/%s/source/Sources", baseURL, distribution, section)
+	return fmt.Sprintf("%s/dists/%s/%s/source/Sources", baseURL, suite, component)
 }
 
 // EnableReleaseVerification enables checksum verification for downloaded files.
@@ -1064,7 +1064,7 @@ func (r *Repository) IsReleaseVerificationEnabled() bool {
 }
 
 // downloadAndParsePackagesWithVerification downloads and parses an uncompressed Packages file.
-func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, section, architecture string) ([]string, error) {
+func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, component, architecture string) ([]string, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving Packages file: %w", err)
@@ -1091,7 +1091,7 @@ func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, secti
 		return nil, fmt.Errorf("error reading Packages file: %w", err)
 	}
 
-	if err = r.VerifyPackagesFileChecksum(section, architecture, data); err != nil {
+	if err = r.VerifyPackagesFileChecksum(component, architecture, data); err != nil {
 		return nil, fmt.Errorf("failed to verify checksum: %w", err)
 	}
 
@@ -1099,7 +1099,7 @@ func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, secti
 }
 
 // downloadAndParseCompressedPackagesWithVerification downloads and parses a compressed Packages file.
-func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packagesURL, extension, section, architecture string) ([]string, error) {
+func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packagesURL, extension, component, architecture string) ([]string, error) {
 	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, packagesURL, true)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving compressed Packages file: %w", err)
@@ -1128,7 +1128,7 @@ func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packages
 
 		// Verify checksum AFTER parsing is complete
 		actualHash := fmt.Sprintf("%x", hasher.Sum(nil))
-		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
+		filename := fmt.Sprintf("%s/binary-%s/Packages", component, architecture)
 
 		// Check against Release file SHA256 checksums
 		found := false
@@ -1352,8 +1352,8 @@ func (r *Repository) LoadCachedPackages(cacheDir string) ([]string, error) {
 		return nil, fmt.Errorf("cache directory is required")
 	}
 
-	if r.Distribution == "" {
-		return nil, fmt.Errorf("distribution is required to load cache")
+	if r.Suite == "" {
+		return nil, fmt.Errorf("suite is required to load cache")
 	}
 
 	allPackages := make(map[string]bool)
@@ -1361,9 +1361,9 @@ func (r *Repository) LoadCachedPackages(cacheDir string) ([]string, error) {
 	var lastErr error
 	found := false
 
-	for _, section := range r.Sections {
+	for _, component := range r.Components {
 		for _, arch := range r.Architectures {
-			cachePath := filepath.Join(cacheDir, r.Distribution, section, fmt.Sprintf("binary-%s", arch), "Packages")
+			cachePath := filepath.Join(cacheDir, r.Suite, component, fmt.Sprintf("binary-%s", arch), "Packages")
 
 			data, err := os.ReadFile(cachePath)
 			if err != nil {
@@ -1389,9 +1389,9 @@ func (r *Repository) LoadCachedPackages(cacheDir string) ([]string, error) {
 
 	if !found {
 		if lastErr != nil {
-			return nil, fmt.Errorf("no cached packages found for %s: %w", r.Distribution, lastErr)
+			return nil, fmt.Errorf("no cached packages found for %s: %w", r.Suite, lastErr)
 		}
-		return nil, fmt.Errorf("no cached packages found for %s", r.Distribution)
+		return nil, fmt.Errorf("no cached packages found for %s", r.Suite)
 	}
 
 	packages := make([]string, 0, len(allPackages))
@@ -1405,14 +1405,14 @@ func (r *Repository) LoadCachedPackages(cacheDir string) ([]string, error) {
 	return packages, nil
 }
 
-// SetDistribution sets the active distribution (suite).
-func (r *Repository) SetDistribution(distribution string) {
-	r.Distribution = distribution
+// SetSuite sets the active suite.
+func (r *Repository) SetSuite(suite string) {
+	r.Suite = suite
 }
 
-// SetSections sets the active sections (components).
-func (r *Repository) SetSections(sections []string) {
-	r.Sections = sections
+// SetComponents sets the active components.
+func (r *Repository) SetComponents(components []string) {
+	r.Components = components
 }
 
 // SetArchitectures sets the active architectures.
@@ -1420,9 +1420,9 @@ func (r *Repository) SetArchitectures(architectures []string) {
 	r.Architectures = architectures
 }
 
-// AddSection adds a section to the repository configuration.
-func (r *Repository) AddSection(section string) {
-	r.Sections = append(r.Sections, section)
+// AddComponent adds a component to the repository configuration.
+func (r *Repository) AddComponent(component string) {
+	r.Components = append(r.Components, component)
 }
 
 // AddArchitecture adds an architecture to the repository configuration.
@@ -1647,13 +1647,13 @@ func (r *Repository) FetchReleaseFile() error {
 // buildReleaseURL constructs the URL for the Release file.
 func (r *Repository) buildReleaseURL() string {
 	baseURL := strings.TrimSuffix(r.URL, "/")
-	return fmt.Sprintf("%s/dists/%s/Release", baseURL, r.Distribution)
+	return fmt.Sprintf("%s/dists/%s/Release", baseURL, r.Suite)
 }
 
 // buildInReleaseURL constructs the URL for the InRelease file.
 func (r *Repository) buildInReleaseURL() string {
 	baseURL := strings.TrimSuffix(r.URL, "/")
-	return fmt.Sprintf("%s/dists/%s/InRelease", baseURL, r.Distribution)
+	return fmt.Sprintf("%s/dists/%s/InRelease", baseURL, r.Suite)
 }
 
 // fetchUnsignedRelease downloads the Release file without signature verification.

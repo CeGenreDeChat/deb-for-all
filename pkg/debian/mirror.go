@@ -125,7 +125,7 @@ func (m *Mirror) Sync() error {
 func (m *Mirror) mirrorSuite(suite string) error {
 	m.logVerbose("Mirroring suite: %s\n", suite)
 
-	m.repository.SetDistribution(suite)
+	m.repository.SetSuite(suite)
 
 	suitePath := m.buildSuitePath(suite)
 	if err := os.MkdirAll(suitePath, DirPermission); err != nil {
@@ -151,7 +151,7 @@ func (m *Mirror) downloadReleaseFile(suite string) error {
 
 	m.logVerbose("Downloading Release file for suite: %s\n", suite)
 
-	m.repository.SetDistribution(suite)
+	m.repository.SetSuite(suite)
 
 	if err := m.repository.FetchReleaseFile(); err != nil {
 		return fmt.Errorf("failed to fetch Release file: %w", err)
@@ -326,8 +326,8 @@ func (m *Mirror) tryDownloadPackagesFile(baseURL, packagesDir, ext string) error
 func (m *Mirror) downloadPackagesForArch(suite, component, arch string) error {
 	m.logVerbose("Downloading packages for %s/%s/%s\n", suite, component, arch)
 
-	m.repository.SetDistribution(suite)
-	m.repository.SetSections([]string{component})
+	m.repository.SetSuite(suite)
+	m.repository.SetComponents([]string{component})
 	m.repository.SetArchitectures([]string{arch})
 
 	packages, err := m.repository.FetchPackages()
@@ -453,7 +453,7 @@ func (m *Mirror) EstimateMirrorSize() (int64, error) {
 	)
 
 	for _, suite := range m.config.Suites {
-		tempRepo.SetDistribution(suite)
+		tempRepo.SetSuite(suite)
 
 		packages, err := tempRepo.FetchPackages()
 		if err != nil {
@@ -521,9 +521,9 @@ func (m *Mirror) UpdateConfiguration(config MirrorConfig) error {
 	m.config = config
 	m.repository.URL = config.BaseURL
 	if len(config.Suites) > 0 {
-		m.repository.SetDistribution(config.Suites[0])
+		m.repository.SetSuite(config.Suites[0])
 	}
-	m.repository.SetSections(config.Components)
+	m.repository.SetComponents(config.Components)
 	m.repository.SetArchitectures(config.Architectures)
 	m.repository.SetKeyringPaths(config.KeyringPaths)
 	if config.SkipGPGVerify {
@@ -539,7 +539,7 @@ func (m *Mirror) UpdateConfiguration(config MirrorConfig) error {
 func (m *Mirror) VerifyMirrorIntegrity(suite string) error {
 	m.logVerbose("Verifying mirror integrity for suite: %s\n", suite)
 
-	m.repository.SetDistribution(suite)
+	m.repository.SetSuite(suite)
 
 	if err := m.repository.FetchReleaseFile(); err != nil {
 		return fmt.Errorf("failed to fetch release info for verification: %w", err)
@@ -576,8 +576,8 @@ func (m *Mirror) verifyComponentArch(suite, component, arch string) {
 func (m *Mirror) loadPackageMetadata(suite, component, arch string) error {
 	m.logVerbose("Loading package metadata for %s/%s\n", suite, component)
 
-	m.repository.SetDistribution(suite)
-	m.repository.SetSections([]string{component})
+	m.repository.SetSuite(suite)
+	m.repository.SetComponents([]string{component})
 	m.repository.SetArchitectures([]string{arch})
 
 	_, err := m.repository.FetchPackages()
