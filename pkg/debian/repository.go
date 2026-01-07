@@ -189,6 +189,7 @@ type Repository struct {
 	VerifyRelease   bool
 	VerifySignature bool
 	KeyringPaths    []string
+	WarningHandler  func(string)
 }
 
 // PackageSpec represents a package name/version request.
@@ -235,6 +236,9 @@ func (r *Repository) FetchPackages() ([]string, error) {
 		for _, arch := range r.Architectures {
 			packages, err := r.fetchPackagesForSectionArch(section, arch)
 			if err != nil {
+				if r.WarningHandler != nil {
+					r.WarningHandler(fmt.Sprintf("Warning: unable to fetch packages for section '%s', architecture '%s': %v", section, arch, err))
+				}
 				lastErr = err
 				continue
 			}
@@ -314,6 +318,9 @@ func (r *Repository) FetchSources() ([]string, error) {
 	for _, section := range r.Sections {
 		sources, err := r.fetchSourcesForSection(section)
 		if err != nil {
+			if r.WarningHandler != nil {
+				r.WarningHandler(fmt.Sprintf("Warning: unable to fetch sources for section '%s': %v", section, err))
+			}
 			lastErr = err
 			continue
 		}
@@ -372,59 +379,9 @@ func (r *Repository) fetchSourcesForSection(section string) ([]SourcePackage, er
 	return nil, lastErr
 }
 
-func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section string) ([]SourcePackage, error) {
-	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving Sources file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading Sources file: %w", err)
-	}
-
-	if r.VerifyRelease && r.ReleaseInfo != nil {
-		if err = r.VerifySourcesFileChecksum(section, data); err != nil {
-			return nil, fmt.Errorf("failed to verify checksum: %w", err)
-		}
-	}
-
-	return r.parseSourcesData(data, section)
-}
-
-func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesURL, extension, section string) ([]SourcePackage, error) {
-	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving compressed Sources file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	reader, cleanup, err := r.createDecompressor(resp.Body, extension)
-	if err != nil {
-		return nil, err
-	}
-	if cleanup != nil {
-		defer cleanup()
-	}
-
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("error reading decompressed Sources file: %w", err)
-	}
-
-	if r.VerifyRelease && r.ReleaseInfo != nil {
-		filename := fmt.Sprintf("%s/source/Sources", section)
-		if err = r.verifyDecompressedFileChecksum(filename, data); err != nil {
-			return nil, fmt.Errorf("failed to verify decompressed checksum: %w", err)
-		}
-	}
-
-	return r.parseSourcesData(data, section)
-}
-
-func (r *Repository) parseSourcesData(data []byte, section string) ([]SourcePackage, error) {
-	scanner := bufio.NewScanner(bytes.NewReader(data))
+// parseSourcesFromReader parses source metadata directly from an io.Reader.
+func (r *Repository) parseSourcesFromReader(reader io.Reader, section string) ([]SourcePackage, error) {
+	scanner := bufio.NewScanner(reader)
 	buf := make([]byte, 0, packagesInitialAlloc)
 	scanner.Buffer(buf, packagesBufferSize)
 
@@ -522,6 +479,84 @@ func (r *Repository) parseSourcesData(data []byte, section string) ([]SourcePack
 	}
 
 	return sources, nil
+}
+
+// Deprecated: use parseSourcesFromReader instead.
+func (r *Repository) parseSourcesData(data []byte, section string) ([]SourcePackage, error) {
+	return r.parseSourcesFromReader(bytes.NewReader(data), section)
+}
+
+func (r *Repository) downloadAndParseSourcesWithVerification(sourcesURL, section string) ([]SourcePackage, error) {
+	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving Sources file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if !r.VerifyRelease || r.ReleaseInfo == nil {
+		return r.parseSourcesFromReader(resp.Body, section)
+	}
+
+	// For validation, buffering is acceptable for small sources files or required for full checksum
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading Sources file: %w", err)
+	}
+
+	if err = r.VerifySourcesFileChecksum(section, data); err != nil {
+		return nil, fmt.Errorf("failed to verify checksum: %w", err)
+	}
+
+	return r.parseSourcesFromReader(bytes.NewReader(data), section)
+}
+
+func (r *Repository) downloadAndParseCompressedSourcesWithVerification(sourcesURL, extension, section string) ([]SourcePackage, error) {
+	resp, err := r.downloader().doRequestWithRetry(http.MethodGet, sourcesURL, true)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving compressed Sources file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	reader, cleanup, err := r.createDecompressor(resp.Body, extension)
+	if err != nil {
+		return nil, err
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	if r.VerifyRelease && r.ReleaseInfo != nil {
+		// Use TeeReader for streaming checksum verification
+		hasher := sha256.New()
+		teeReader := io.TeeReader(reader, hasher)
+
+		sources, err := r.parseSourcesFromReader(teeReader, section)
+		if err != nil {
+			return nil, err
+		}
+
+		actualHash := fmt.Sprintf("%x", hasher.Sum(nil))
+		filename := fmt.Sprintf("%s/source/Sources", section)
+
+		found := false
+		for _, checksum := range r.ReleaseInfo.SHA256 {
+			if checksum.Filename == filename {
+				found = true
+				if actualHash != strings.ToLower(checksum.Hash) {
+					return nil, fmt.Errorf("invalid sha256 checksum for %s. Expected: %s, Actual: %s", filename, checksum.Hash, actualHash)
+				}
+				break
+			}
+		}
+
+		if !found {
+			return nil, fmt.Errorf("no SHA256 checksum found for %s (streaming verification requires SHA256)", filename)
+		}
+
+		return sources, nil
+	}
+
+	return r.parseSourcesFromReader(reader, section)
 }
 
 func (r *Repository) parseSourceFileEntry(line string, files map[string]*SourceFile, checksumType string) {
@@ -649,6 +684,9 @@ func (r *Repository) downloadPackagesData(packagesURL, extension, section, archi
 	defer resp.Body.Close()
 
 	if extension == "" {
+		// For uncompressed files, we still buffer if verification is needed,
+		// because we can't easily stream-verify AND save without T-reading to memory buffer or temp file.
+		// Since cache functionality implies saving the file, io.ReadAll is appropriate here.
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("error reading Packages file: %w", err)
@@ -671,6 +709,8 @@ func (r *Repository) downloadPackagesData(packagesURL, extension, section, archi
 		defer cleanup()
 	}
 
+	// For caching, we need the decompressed data to write to disk.
+	// We read all data since we must write it to file anyway.
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("error reading decompressed Packages file: %w", err)
@@ -678,8 +718,33 @@ func (r *Repository) downloadPackagesData(packagesURL, extension, section, archi
 
 	if r.VerifyRelease && r.ReleaseInfo != nil {
 		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
-		if err := r.verifyDecompressedFileChecksum(filename, data); err != nil {
-			return nil, fmt.Errorf("failed to verify decompressed checksum: %w", err)
+		// Try SHA256 first
+		verified := false
+		for _, checksum := range r.ReleaseInfo.SHA256 {
+			if checksum.Filename == filename {
+				if err := r.verifyDataChecksum(data, checksum.Hash, "sha256"); err != nil {
+					return nil, err
+				}
+				verified = true
+				break
+			}
+		}
+		// Try MD5 if SHA256 not found
+		if !verified {
+			for _, checksum := range r.ReleaseInfo.MD5Sum {
+				if checksum.Filename == filename {
+					if err := r.verifyDataChecksum(data, checksum.Hash, "md5"); err != nil {
+						return nil, err
+					}
+					verified = true
+					break
+				}
+			}
+		}
+
+		if !verified {
+			// If verification failed because no checksum was found
+			return nil, fmt.Errorf("no checksum found for file %s", filename)
 		}
 	}
 
@@ -1006,15 +1071,28 @@ func (r *Repository) downloadAndParsePackagesWithVerification(packagesURL, secti
 	}
 	defer resp.Body.Close()
 
+	if !r.VerifyRelease || r.ReleaseInfo == nil {
+		// If no verification required, stream parse directly from response body
+		packagedNames, metadata, err := r.parsePackagesFromReader(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		r.PackageMetadata = append(r.PackageMetadata, metadata...)
+		return packagedNames, nil
+	}
+
+	// For verification, we need to read the whole content to verify checksum
+	// Note: streaming verification with hash calculation is possible but complex
+	// because we need to parse valid data only. Here we buffer to verify first.
+	// Optimization: If memory is an issue, consider computing hash via TeeReader
+	// but this risks parsing corrupted data before verification fails.
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading Packages file: %w", err)
 	}
 
-	if r.VerifyRelease && r.ReleaseInfo != nil {
-		if err = r.VerifyPackagesFileChecksum(section, architecture, data); err != nil {
-			return nil, fmt.Errorf("failed to verify checksum: %w", err)
-		}
+	if err = r.VerifyPackagesFileChecksum(section, architecture, data); err != nil {
+		return nil, fmt.Errorf("failed to verify checksum: %w", err)
 	}
 
 	return r.parsePackagesData(data)
@@ -1036,19 +1114,58 @@ func (r *Repository) downloadAndParseCompressedPackagesWithVerification(packages
 		defer cleanup()
 	}
 
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("error reading decompressed Packages file: %w", err)
-	}
-
+	// Stream parsing with simultaneous checksum verification using TeeReader
 	if r.VerifyRelease && r.ReleaseInfo != nil {
-		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
-		if err = r.verifyDecompressedFileChecksum(filename, data); err != nil {
-			return nil, fmt.Errorf("failed to verify decompressed checksum: %w", err)
+		// Optimization: Use TeeReader to compute hash while parsing to avoid loading
+		// full decompressed file into memory. We use SHA256 by default.
+		hasher := sha256.New()
+		teeReader := io.TeeReader(reader, hasher)
+
+		packagedNames, metadata, parseErr := r.parsePackagesFromReader(teeReader)
+		if parseErr != nil {
+			return nil, parseErr
 		}
+
+		// Verify checksum AFTER parsing is complete
+		actualHash := fmt.Sprintf("%x", hasher.Sum(nil))
+		filename := fmt.Sprintf("%s/binary-%s/Packages", section, architecture)
+
+		// Check against Release file SHA256 checksums
+		found := false
+		for _, checksum := range r.ReleaseInfo.SHA256 {
+			if checksum.Filename == filename {
+				found = true
+				if actualHash != strings.ToLower(checksum.Hash) {
+					return nil, fmt.Errorf("invalid sha256 checksum for %s. Expected: %s, Actual: %s", filename, checksum.Hash, actualHash)
+				}
+				break
+			}
+		}
+
+		// Fallback to MD5 if SHA256 not found (unlikely for modern repos but possible)
+		// Note: Since we hashed with SHA256, we can't verify MD5 here without a second pass or second hasher.
+		// If SHA256 is missing from Release file, we fail securely or would need double-hashing.
+		// For Debian repositories, SHA256 is standard.
+		if !found {
+			// If no SHA256 checksum found in Release file, we warn or fail.
+			// To support MD5-only repos properly while streaming, we would need to MultiWriter both hashers.
+			// Given modern standards, we enforce SHA256 availability for streaming optimization.
+			// If you need MD5 support, fallback to buffering method.
+			return nil, fmt.Errorf("no SHA256 checksum found for %s (streaming verification requires SHA256)", filename)
+		}
+
+		r.PackageMetadata = append(r.PackageMetadata, metadata...)
+		return packagedNames, nil
 	}
 
-	return r.parsePackagesData(data)
+	// No verification needed, just stream parse
+	packagedNames, metadata, err := r.parsePackagesFromReader(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	r.PackageMetadata = append(r.PackageMetadata, metadata...)
+	return packagedNames, nil
 }
 
 // createDecompressor creates a decompression reader based on the file extension.
@@ -1074,23 +1191,12 @@ func (r *Repository) createDecompressor(body io.Reader, extension string) (io.Re
 	}
 }
 
-// parsePackagesData parses package metadata from Packages file content.
-func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
-	packagedNames, metadata, err := r.parsePackagesDataInternal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	// Accumulate metadata instead of replacing it
-	r.PackageMetadata = append(r.PackageMetadata, metadata...)
-	return packagedNames, nil
-}
-
-func (r *Repository) parsePackagesDataInternal(data []byte) ([]string, []Package, error) {
+// parsePackagesFromReader parses package metadata directly from an io.Reader.
+func (r *Repository) parsePackagesFromReader(reader io.Reader) ([]string, []Package, error) {
 	var packages []string
 	var packageMetadata []Package
 
-	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner := bufio.NewScanner(reader)
 	buf := make([]byte, 0, packagesInitialAlloc)
 	scanner.Buffer(buf, packagesBufferSize)
 
@@ -1155,6 +1261,23 @@ func (r *Repository) parsePackagesDataInternal(data []byte) ([]string, []Package
 	}
 
 	return packages, packageMetadata, nil
+}
+
+// parsePackagesData parses package metadata from Packages file content.
+// Deprecated: use parsePackagesFromReader instead.
+func (r *Repository) parsePackagesData(data []byte) ([]string, error) {
+	packagedNames, metadata, err := r.parsePackagesFromReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	// Accumulate metadata instead of replacing it
+	r.PackageMetadata = append(r.PackageMetadata, metadata...)
+	return packagedNames, nil
+}
+
+func (r *Repository) parsePackagesDataInternal(data []byte) ([]string, []Package, error) {
+	return r.parsePackagesFromReader(bytes.NewReader(data))
 }
 
 // finalizePackage sets default values for a package before storing.
